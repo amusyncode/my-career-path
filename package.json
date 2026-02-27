@@ -9,13 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "date-fns": "^4.1.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.1.0",
     "lucide-react": "^0.564.0",
+    "mammoth": "^1.11.0",
     "next": "14.2.35",
+    "pdf-parse": "^2.4.5",
     "react": "^18",
     "react-beautiful-dnd": "^13.1.1",
     "react-dom": "^18",
@@ -25,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^18",
     "@types/react-beautiful-dnd": "^13.1.8",
     "@types/react-dom": "^18",

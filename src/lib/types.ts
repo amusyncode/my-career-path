@@ -23,6 +23,8 @@ export interface Profile {
   bio: string | null;
   avatar_url: string | null;
   is_public: boolean;
+  role: 'user' | 'admin';
+  is_onboarded: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -141,6 +143,46 @@ export interface CoverLetter {
   personality: string | null;
   motivation: string | null;
   aspiration: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UploadedResume {
+  id: string;
+  user_id: string;
+  file_url: string;
+  file_name: string;
+  file_size: number | null;
+  uploaded_at: string;
+}
+
+export interface UploadedCoverLetter {
+  id: string;
+  user_id: string;
+  file_url: string;
+  file_name: string;
+  file_size: number | null;
+  uploaded_at: string;
+}
+
+export interface AIReviewResult {
+  id: string;
+  user_id: string;
+  document_type: 'resume' | 'cover_letter';
+  document_id: string;
+  overall_score: number | null;
+  improvement_points: Record<string, unknown>[];
+  reviewer_comment: string | null;
+  reviewed_at: string;
+}
+
+export interface CounselingRecord {
+  id: string;
+  user_id: string;
+  counselor_id: string;
+  title: string;
+  content: string | null;
+  counseling_date: string;
   created_at: string;
   updated_at: string;
 }

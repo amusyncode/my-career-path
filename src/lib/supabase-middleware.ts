@@ -34,7 +34,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname === "/signup";
   const isPublicPath =
     request.nextUrl.pathname === "/" ||
-    request.nextUrl.pathname.startsWith("/auth/");
+    request.nextUrl.pathname.startsWith("/auth/") ||
+    request.nextUrl.pathname.startsWith("/api/");
 
   // 미로그인 사용자가 보호된 페이지에 접근 시 로그인으로 리다이렉트
   if (!user && !isAuthPage && !isPublicPath) {

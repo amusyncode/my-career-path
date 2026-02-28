@@ -15,6 +15,7 @@ export type CertificateType = "certificate" | "award" | "completion";
 export interface Profile {
   id: string;
   name: string;
+  email: string | null;
   school: string | null;
   department: string | null;
   grade: number | null;
@@ -147,22 +148,48 @@ export interface CoverLetter {
   updated_at: string;
 }
 
+export type UploadDocumentStatus = 'uploaded' | 'reviewing' | 'reviewed' | 'failed';
+
 export interface UploadedResume {
   id: string;
   user_id: string;
+  title: string | null;
   file_url: string;
   file_name: string;
   file_size: number | null;
+  file_type: string | null;
+  status: UploadDocumentStatus;
+  uploaded_by: string | null;
   uploaded_at: string;
 }
 
 export interface UploadedCoverLetter {
   id: string;
   user_id: string;
+  title: string | null;
   file_url: string;
   file_name: string;
   file_size: number | null;
+  file_type: string | null;
+  status: UploadDocumentStatus;
+  uploaded_by: string | null;
   uploaded_at: string;
+}
+
+export interface StudentListItem {
+  id: string;
+  name: string;
+  email: string | null;
+  school: string | null;
+  department: string | null;
+  grade: number | null;
+  target_field: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  project_count: number;
+  certificate_count: number;
+  last_active_date: string | null;
+  current_streak: number;
 }
 
 export interface AIReviewResult {

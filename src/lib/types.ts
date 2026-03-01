@@ -247,13 +247,39 @@ export interface JobMatch {
   preparation_tips: string;
 }
 
+export type CounselingType = 'career' | 'resume' | 'interview' | 'mental' | 'other';
+
+export interface AICounselingSuggestion {
+  suggested_topics: string[];
+  key_observations: string[];
+  action_suggestions: string[];
+  concerns?: string[];
+  encouragement: string;
+}
+
 export interface CounselingRecord {
   id: string;
   user_id: string;
   counselor_id: string;
   title: string;
   content: string | null;
+  counseling_type: CounselingType;
+  is_completed: boolean;
+  action_items: string | null;
+  next_counseling_date: string | null;
+  ai_suggestion: AICounselingSuggestion | null;
   counseling_date: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface CounselingRecordWithStudent extends CounselingRecord {
+  profiles: {
+    name: string;
+    school: string | null;
+    department: string | null;
+    grade: number | null;
+    avatar_url: string | null;
+    target_field: string | null;
+  };
 }

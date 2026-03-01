@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       recent_logs: logsRes.data || [],
     });
 
-    const result = await generateReview(prompt);
+    const { data: result } = await generateReview(prompt);
 
     return NextResponse.json(result);
   } catch (error) {

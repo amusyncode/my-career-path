@@ -201,6 +201,50 @@ export interface AIReviewResult {
   improvement_points: Record<string, unknown>[];
   reviewer_comment: string | null;
   reviewed_at: string;
+  input_tokens: number;
+  output_tokens: number;
+  model_name: string;
+}
+
+// --- AI 분석센터 타입 ---
+
+export interface AIStudentAnalysis {
+  id: string;
+  user_id: string;
+  analysis_type: 'competency' | 'job_matching';
+  result: CompetencyAnalysisResult | JobMatchingResult;
+  input_tokens: number;
+  output_tokens: number;
+  model_name: string;
+  created_at: string;
+}
+
+export interface CompetencyAnalysisResult {
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+  career_fit_score: number;
+  summary: string;
+  skill_scores: { category: string; score: number }[];
+  suitable_jobs: string[];
+  missing_skills: string[];
+}
+
+export interface JobMatchingResult {
+  matches: JobMatch[];
+  overall_readiness: number;
+  top_recommendation: string;
+  growth_plan: string;
+}
+
+export interface JobMatch {
+  job_title: string;
+  match_rate: number;
+  reasons: string[];
+  required_skills: string[];
+  student_has: string[];
+  student_lacks: string[];
+  preparation_tips: string;
 }
 
 export interface CounselingRecord {

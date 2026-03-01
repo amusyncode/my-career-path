@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { generateReview } from "@/lib/gemini";
-import { buildStudentAnalysisPrompt } from "@/lib/prompts";
+import { buildJobMatchingPrompt } from "@/lib/prompts";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { user_id } = body;
+    const { user_id, options } = body;
 
     if (!user_id) {
       return NextResponse.json({ error: "user_id가 필요합니다." }, { status: 400 });
@@ -43,18 +43,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "학생 프로필을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const prompt = buildStudentAnalysisPrompt({
+    const prompt = buildJobMatchingPrompt({
       name: profileRes.data.name,
       school: profileRes.data.school,
       department: profileRes.data.department,
       grade: profileRes.data.grade,
       target_field: profileRes.data.target_field,
       target_company: profileRes.data.target_company,
-      bio: profileRes.data.bio,
       goals: goalsRes.data || [],
       skills: skillsRes.data || [],
       projects: projectsRes.data || [],
       certificates: certsRes.data || [],
+      options: options || {},
     });
 
     const { data: result, usage } = await generateReview(prompt);
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     // 분석 결과를 ai_student_analyses에 저장
     await supabase.from("ai_student_analyses").insert({
       user_id: user_id,
-      analysis_type: "competency",
+      analysis_type: "job_matching",
       result: result,
       input_tokens: usage?.promptTokenCount ?? 0,
       output_tokens: usage?.candidatesTokenCount ?? 0,
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ...result, usage });
   } catch (error) {
-    console.error("학생 분석 API 오류:", error);
+    console.error("취업 매칭 API 오류:", error);
     const message = error instanceof Error ? error.message : "서버 오류가 발생했습니다.";
     return NextResponse.json({ error: message }, { status: 500 });
   }

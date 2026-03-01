@@ -24,7 +24,16 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   }
 }
 
-export async function generateReview(prompt: string): Promise<Record<string, unknown>> {
+export interface GenerateReviewResponse {
+  data: Record<string, unknown>;
+  usage: {
+    promptTokenCount: number;
+    candidatesTokenCount: number;
+    totalTokenCount: number;
+  } | null;
+}
+
+export async function generateReview(prompt: string): Promise<GenerateReviewResponse> {
   const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
   let lastError: Error | null = null;
@@ -33,11 +42,18 @@ export async function generateReview(prompt: string): Promise<Record<string, unk
     try {
       const result = await withTimeout(model.generateContent(prompt), TIMEOUT_MS);
       const response = result.response;
+      const usage = response.usageMetadata
+        ? {
+            promptTokenCount: response.usageMetadata.promptTokenCount ?? 0,
+            candidatesTokenCount: response.usageMetadata.candidatesTokenCount ?? 0,
+            totalTokenCount: response.usageMetadata.totalTokenCount ?? 0,
+          }
+        : null;
       const text = response.text();
 
       const cleaned = stripMarkdownCodeBlock(text);
       const parsed = JSON.parse(cleaned);
-      return parsed;
+      return { data: parsed, usage };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 

@@ -7,6 +7,7 @@ import type { Profile } from "@/lib/types";
 import {
   Users,
   MessageSquare,
+  Sparkles,
   LogOut,
   Bell,
   MoreHorizontal,
@@ -20,6 +21,7 @@ import toast from "react-hot-toast";
 const ADMIN_MENU_ITEMS = [
   { icon: Users, label: "학생관리", href: "/admin/students" },
   { icon: MessageSquare, label: "상담관리", href: "/admin/counseling" },
+  { icon: Sparkles, label: "AI 분석센터", href: "/admin/ai-center" },
 ];
 
 const ADMIN_MOBILE_TABS = ADMIN_MENU_ITEMS;
@@ -27,6 +29,7 @@ const ADMIN_MOBILE_TABS = ADMIN_MENU_ITEMS;
 const ADMIN_PAGE_TITLES: Record<string, string> = {
   "/admin/students": "학생관리",
   "/admin/counseling": "상담관리",
+  "/admin/ai-center": "AI 분석센터",
 };
 
 export default function AdminLayout({

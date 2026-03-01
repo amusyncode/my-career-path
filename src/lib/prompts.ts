@@ -99,7 +99,17 @@ ${profileData.certificates?.map((c) => `- ${c.name} (${c.type}${c.issuer ? `, ${
   "weaknesses": ["보완점1", "보완점2", "보완점3"],
   "recommendations": ["추천 활동1", "추천 활동2", "추천 활동3"],
   "career_fit_score": 0~100 사이 정수,
-  "summary": "전체적인 종합 평가 (2~3문장)"
+  "summary": "전체적인 종합 평가 (2~3문장)",
+  "skill_scores": [
+    { "category": "기술역량", "score": 0~100 },
+    { "category": "자격증", "score": 0~100 },
+    { "category": "포트폴리오", "score": 0~100 },
+    { "category": "꾸준함", "score": 0~100 },
+    { "category": "목표관리", "score": 0~100 },
+    { "category": "직무적합성", "score": 0~100 }
+  ],
+  "suitable_jobs": ["추천 직무1", "추천 직무2", "추천 직무3"],
+  "missing_skills": ["부족 역량1", "부족 역량2", "부족 역량3"]
 }`;
 }
 
@@ -149,4 +159,74 @@ ${studentData.recent_logs?.map((l) => `- ${l.log_date}: ${l.daily_goal || "목�
   "talking_points": ["대화 포인트1", "대화 포인트2", "대화 포인트3"],
   "overall_assessment": "종합 평가 및 상담 방향 제안 (2~3문장)"
 }`;
+}
+
+export function buildJobMatchingPrompt(profileData: {
+  name: string;
+  school?: string | null;
+  department?: string | null;
+  grade?: number | null;
+  target_field?: string | null;
+  target_company?: string | null;
+  goals?: { title: string; category: string; status: string }[];
+  skills?: { name: string; level: number; category?: string | null }[];
+  projects?: { title: string; tech_stack: string[]; status: string }[];
+  certificates?: { name: string; type: string; issuer?: string | null }[];
+  options?: {
+    skillBased?: boolean;
+    certBased?: boolean;
+    portfolioBased?: boolean;
+    personalityBased?: boolean;
+  };
+}): string {
+  const optionDesc = [];
+  if (profileData.options?.skillBased !== false) optionDesc.push("스킬 기반 매칭");
+  if (profileData.options?.certBased !== false) optionDesc.push("자격증 기반 매칭");
+  if (profileData.options?.portfolioBased !== false) optionDesc.push("포트폴리오 기반 매칭");
+  if (profileData.options?.personalityBased) optionDesc.push("성격/적성 고려");
+
+  return `당신은 한국 IT 취업 시장에 정통한 커리어 매칭 전문가입니다.
+아래 학생의 프로필과 역량 데이터를 분석하여 최적의 직무를 매칭해주세요.
+
+## 학생 프로필:
+- 이름: ${profileData.name}
+- 학교: ${profileData.school || "미입력"}
+- 학과: ${profileData.department || "미입력"}
+- 학년: ${profileData.grade || "미입력"}
+- 관심 분야: ${profileData.target_field || "미입력"}
+- 목표 기업: ${profileData.target_company || "미입력"}
+
+## 로드맵 목표:
+${profileData.goals?.map((g) => `- [${g.status}] ${g.title} (${g.category})`).join("\n") || "없음"}
+
+## 보유 스킬:
+${profileData.skills?.map((s) => `- ${s.name} (Lv.${s.level}${s.category ? `, ${s.category}` : ""})`).join("\n") || "없음"}
+
+## 프로젝트:
+${profileData.projects?.map((p) => `- [${p.status}] ${p.title} (${p.tech_stack.join(", ")})`).join("\n") || "없음"}
+
+## 자격증/수상:
+${profileData.certificates?.map((c) => `- ${c.name} (${c.type}${c.issuer ? `, ${c.issuer}` : ""})`).join("\n") || "없음"}
+
+## 분석 기준: ${optionDesc.join(", ")}
+
+## 반드시 아래 JSON 형식으로만 응답하세요:
+{
+  "matches": [
+    {
+      "job_title": "직무명",
+      "match_rate": 0~100 사이 정수,
+      "reasons": ["매칭 근거1", "매칭 근거2"],
+      "required_skills": ["필요 스킬1", "필요 스킬2"],
+      "student_has": ["보유 스킬1", "보유 스킬2"],
+      "student_lacks": ["부족 스킬1"],
+      "preparation_tips": "준비 조언 (1~2문장)"
+    }
+  ],
+  "overall_readiness": 0~100 사이 정수,
+  "top_recommendation": "가장 추천하는 직무와 이유 (2~3문장)",
+  "growth_plan": "성장 로드맵 제안 (3~5문장)"
+}
+
+매칭 직무는 3~5개를 추천하고, match_rate가 높은 순서로 정렬해주세요.`;
 }

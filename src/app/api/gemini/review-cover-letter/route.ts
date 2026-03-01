@@ -33,9 +33,9 @@ export async function POST(request: NextRequest) {
     }
 
     const prompt = buildCoverLetterReviewPrompt(text);
-    const result = await generateReview(prompt);
+    const { data: result, usage } = await generateReview(prompt);
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, usage });
   } catch (error) {
     console.error("자기소개서 리뷰 API 오류:", error);
     const message = error instanceof Error ? error.message : "서버 오류가 발생했습니다.";

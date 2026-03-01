@@ -68,10 +68,17 @@ export default function SignupPage() {
     });
 
     if (error) {
-      toast.error(error.message);
+      if (error.message.includes("already registered") || error.message.includes("already been registered")) {
+        toast.error("이미 등록된 이메일입니다.");
+      } else {
+        toast.error(error.message);
+      }
       setLoading(false);
       return;
     }
+
+    // 트리거가 profiles INSERT 완료할 시간 확보
+    await new Promise((r) => setTimeout(r, 500));
 
     // 프로필 추가 정보 업데이트 (트리거가 기본 프로필 생성 후)
     const {
@@ -79,15 +86,22 @@ export default function SignupPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      await supabase
-        .from("profiles")
-        .update({
-          name: form.name,
-          school: form.school || null,
-          department: form.department || null,
-          grade: form.grade ? parseInt(form.grade) : null,
-        })
-        .eq("id", user.id);
+      try {
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({
+            school: form.school || null,
+            department: form.department || null,
+            grade: form.grade ? parseInt(form.grade) : null,
+          })
+          .eq("id", user.id);
+
+        if (updateError) {
+          console.error("프로필 업데이트 실패:", updateError);
+        }
+      } catch (err) {
+        console.error("프로필 업데이트 예외:", err);
+      }
     }
 
     toast.success("회원가입이 완료되었습니다!");

@@ -8,6 +8,8 @@ import type {
   Project,
   Skill,
   CoverLetter,
+  ResumeDataRow,
+  Experience,
 } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -33,6 +35,7 @@ import {
   Star,
   MessageSquare,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -44,14 +47,6 @@ import {
 } from "react-beautiful-dnd";
 
 /* ─── 타입 ─── */
-interface Experience {
-  id: string;
-  title: string;
-  organization: string;
-  period: string;
-  description: string;
-}
-
 interface ResumeData {
   name: string;
   email: string;
@@ -183,6 +178,10 @@ export default function ResumePage() {
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  /* ─── 이력서 DB 저장 ─── */
+  const [resumeSaving, setResumeSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
   /* ─── 프로필 사진 업로드 ─── */
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -230,29 +229,63 @@ export default function ResumePage() {
       setSkills(skillRes.data || []);
       setCoverLetters(clRes.data || []);
 
-      // localStorage에서 이력서 복원
-      const saved = localStorage.getItem(`resume_data_${user.id}`);
-      if (saved) {
-        try {
-          setResume(JSON.parse(saved));
-        } catch {
-          // fallback to profile data
-        }
-      }
+      // 1순위: DB에서 이력서 복원
+      const { data: dbResume } = await supabase
+        .from("resume_data")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
 
-      // 프로필 기본 정보 채우기 (localStorage에 없는 경우)
-      if (!saved && profileRes.data) {
-        const p = profileRes.data as Profile;
-        setResume((prev) => ({
-          ...prev,
-          name: p.name || "",
-          targetField: p.target_field || "",
-          intro: p.bio || "",
-          avatarUrl: p.avatar_url,
-          schoolName: p.school || "",
-          department: p.department || "",
-          grade: p.grade ? String(p.grade) : "",
-        }));
+      if (dbResume) {
+        const row = dbResume as ResumeDataRow;
+        setResume({
+          name: row.name || "",
+          email: row.email || "",
+          phone: row.phone || "",
+          address: row.address || "",
+          targetField: row.target_field || "",
+          intro: row.intro || "",
+          avatarUrl: row.avatar_url,
+          schoolName: row.school_name || "",
+          department: row.department || "",
+          grade: row.grade ? String(row.grade) : "",
+          enrollmentPeriod: row.enrollment_period || "",
+          gpa: row.gpa || "",
+          courses: (row.courses as string[]) || [],
+          selectedCertIds: (row.selected_cert_ids as string[]) || [],
+          certOrder: (row.cert_order as string[]) || [],
+          selectedProjectIds: (row.selected_project_ids as string[]) || [],
+          projectOrder: (row.project_order as string[]) || [],
+          selectedSkillIds: (row.selected_skill_ids as string[]) || [],
+          experiences: (row.experiences as Experience[]) || [],
+          selfPR: row.self_pr || "",
+        });
+        setLastSavedAt(row.updated_at);
+      } else {
+        // 2순위: localStorage에서 이력서 복원
+        const saved = localStorage.getItem(`resume_data_${user.id}`);
+        if (saved) {
+          try {
+            setResume(JSON.parse(saved));
+          } catch {
+            // fallback to profile data
+          }
+        }
+
+        // 3순위: 프로필 기본 정보 채우기
+        if (!saved && profileRes.data) {
+          const p = profileRes.data as Profile;
+          setResume((prev) => ({
+            ...prev,
+            name: p.name || "",
+            targetField: p.target_field || "",
+            intro: p.bio || "",
+            avatarUrl: p.avatar_url,
+            schoolName: p.school || "",
+            department: p.department || "",
+            grade: p.grade ? String(p.grade) : "",
+          }));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -271,6 +304,53 @@ export default function ResumePage() {
     if (!userId) return;
     localStorage.setItem(`resume_data_${userId}`, JSON.stringify(resume));
   }, [resume, userId]);
+
+  /* ─── 이력서 DB 저장 ─── */
+  const saveResumeToDb = async () => {
+    if (!userId) return;
+    setResumeSaving(true);
+    try {
+      const payload = {
+        user_id: userId,
+        name: resume.name,
+        email: resume.email,
+        phone: resume.phone,
+        address: resume.address,
+        target_field: resume.targetField,
+        intro: resume.intro,
+        avatar_url: resume.avatarUrl,
+        school_name: resume.schoolName,
+        department: resume.department,
+        grade: resume.grade ? parseInt(resume.grade) : null,
+        enrollment_period: resume.enrollmentPeriod,
+        gpa: resume.gpa,
+        courses: resume.courses,
+        selected_cert_ids: resume.selectedCertIds,
+        cert_order: resume.certOrder,
+        selected_project_ids: resume.selectedProjectIds,
+        project_order: resume.projectOrder,
+        selected_skill_ids: resume.selectedSkillIds,
+        experiences: resume.experiences,
+        self_pr: resume.selfPR,
+      };
+
+      const { error } = await supabase
+        .from("resume_data")
+        .upsert(payload, { onConflict: "user_id" });
+
+      if (error) throw error;
+
+      // localStorage도 동기화
+      localStorage.setItem(`resume_data_${userId}`, JSON.stringify(resume));
+      setLastSavedAt(new Date().toISOString());
+      toast.success("이력서가 저장되었습니다.");
+    } catch (err) {
+      console.error("이력서 DB 저장 실패:", err);
+      toast.error("이력서 저장에 실패했습니다.");
+    } finally {
+      setResumeSaving(false);
+    }
+  };
 
   /* ─── 이력서 헬퍼 ─── */
   const updateResume = (partial: Partial<ResumeData>) =>
@@ -1326,6 +1406,31 @@ export default function ResumePage() {
               }`}
             >
               <div className="sticky top-6">
+                {/* DB 저장 버튼 */}
+                <button
+                  onClick={saveResumeToDb}
+                  disabled={resumeSaving}
+                  className="w-full mb-2 py-2.5 bg-green-500 text-white rounded-xl text-sm font-semibold hover:bg-green-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {resumeSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  이력서 저장
+                </button>
+                {lastSavedAt && (
+                  <p className="text-xs text-gray-400 text-center mb-2">
+                    마지막 저장: {new Date(lastSavedAt).toLocaleString("ko-KR", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                )}
+
                 {/* PDF 다운로드 버튼 */}
                 <button
                   onClick={downloadPDF}

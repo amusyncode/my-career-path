@@ -273,6 +273,43 @@ export interface CounselingRecord {
   updated_at: string;
 }
 
+// --- 이력서 DB 저장 타입 ---
+
+export interface Experience {
+  id: string;
+  title: string;
+  organization: string;
+  period: string;
+  description: string;
+}
+
+export interface ResumeDataRow {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  target_field: string;
+  intro: string;
+  avatar_url: string | null;
+  school_name: string;
+  department: string;
+  grade: number | null;
+  enrollment_period: string;
+  gpa: string;
+  courses: string[];
+  selected_cert_ids: string[];
+  cert_order: string[];
+  selected_project_ids: string[];
+  project_order: string[];
+  selected_skill_ids: string[];
+  experiences: Experience[];
+  self_pr: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CounselingRecordWithStudent extends CounselingRecord {
   profiles: {
     name: string;

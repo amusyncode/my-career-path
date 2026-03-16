@@ -24,7 +24,7 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -39,8 +39,21 @@ export default function LoginPage() {
       return;
     }
 
+    // role 확인 후 관리자/학생 분기
+    let redirectTo = "/dashboard";
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+      if (profile?.role === "admin") {
+        redirectTo = "/admin/dashboard";
+      }
+    }
+
     toast.success("로그인 성공!");
-    router.push("/dashboard");
+    router.push(redirectTo);
     router.refresh();
   };
 

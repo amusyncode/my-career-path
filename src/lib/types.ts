@@ -26,6 +26,14 @@ export type CounselingType = 'career' | 'resume' | 'interview' | 'mental' | 'oth
 
 export type FileType = 'pdf' | 'docx' | 'hwp' | 'txt' | 'other';
 
+export type EducationLevel = 'high_school' | 'university';
+
+export type EducationLevelWithAll = 'high_school' | 'university' | 'all';
+
+export type GemCategory = 'resume' | 'cover_letter' | 'analysis' | 'counseling';
+
+export type GemScope = 'global' | 'instructor' | 'student';
+
 // --- 프로필 ---
 
 export interface Profile {
@@ -48,6 +56,27 @@ export interface Profile {
   phone: string | null;
   student_email: string | null;
   is_onboarded: boolean;
+  education_level: EducationLevel;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Gems ---
+
+export interface Gem {
+  id: string;
+  name: string;
+  description: string | null;
+  category: GemCategory;
+  department: string | null;
+  education_level: EducationLevelWithAll;
+  system_prompt: string;
+  is_default: boolean;
+  is_active: boolean;
+  created_by: string | null;
+  scope: GemScope;
+  sort_order: number;
+  usage_count: number;
   created_at: string;
   updated_at: string;
 }

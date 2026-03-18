@@ -79,7 +79,7 @@ export default function AdminLayout({
 
     if (data) {
       const p = data as Profile;
-      if (p.role !== "admin") {
+      if (p.role !== "super_admin" && p.role !== "instructor") {
         toast.error("관리자 권한이 필요합니다.");
         router.push("/dashboard");
         return;
@@ -113,7 +113,7 @@ export default function AdminLayout({
     );
   }
 
-  if (!profile || profile.role !== "admin") {
+  if (!profile || (profile.role !== "super_admin" && profile.role !== "instructor")) {
     return null;
   }
 

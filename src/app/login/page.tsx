@@ -47,7 +47,7 @@ export default function LoginPage() {
         .select("role")
         .eq("id", data.user.id)
         .single();
-      if (profile?.role === "admin") {
+      if (profile?.role === "super_admin" || profile?.role === "instructor") {
         redirectTo = "/admin/dashboard";
       }
     }

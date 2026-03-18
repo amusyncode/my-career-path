@@ -32,6 +32,7 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage =
     request.nextUrl.pathname === "/login" ||
     request.nextUrl.pathname === "/signup";
+  const isOnboardingPage = request.nextUrl.pathname === "/onboarding";
   const isPublicPath =
     request.nextUrl.pathname === "/" ||
     request.nextUrl.pathname.startsWith("/auth/") ||
@@ -48,13 +49,35 @@ export async function updateSession(request: NextRequest) {
   if (user && isAuthPage) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, is_onboarded")
       .eq("id", user.id)
       .single();
 
     const url = request.nextUrl.clone();
-    url.pathname = profile?.role === "admin" ? "/admin/dashboard" : "/dashboard";
+    // 강사: 온보딩 미완료 시 온보딩 페이지로
+    if (profile?.role === "instructor" && !profile?.is_onboarded) {
+      url.pathname = "/onboarding";
+    } else if (profile?.role === "super_admin" || profile?.role === "instructor") {
+      url.pathname = "/admin/dashboard";
+    } else {
+      url.pathname = "/dashboard";
+    }
     return NextResponse.redirect(url);
+  }
+
+  // 강사: 온보딩 미완료 시 온보딩 이외 페이지 접근 차단
+  if (user && !isAuthPage && !isOnboardingPage && !isPublicPath) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, is_onboarded")
+      .eq("id", user.id)
+      .single();
+
+    if (profile?.role === "instructor" && !profile?.is_onboarded) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/onboarding";
+      return NextResponse.redirect(url);
+    }
   }
 
   // 관리자 페이지 접근 시 role 체크
@@ -65,7 +88,7 @@ export async function updateSession(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== "admin") {
+    if (profile?.role !== "super_admin" && profile?.role !== "instructor") {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);

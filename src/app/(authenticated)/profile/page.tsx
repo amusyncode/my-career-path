@@ -527,7 +527,7 @@ export default function ProfilePage() {
             <div>
               <p className="text-xs text-gray-500">역할</p>
               <p className="text-sm font-medium text-gray-900">
-                {profile.role === "admin" ? "관리자" : "학생"}
+                {profile.role === "super_admin" ? "플랫폼 관리자" : profile.role === "instructor" ? "강사" : "학생"}
               </p>
             </div>
           </div>

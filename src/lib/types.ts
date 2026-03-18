@@ -1,3 +1,11 @@
+// ============================================
+// MyCareerPath 멀티테넌트 SaaS 타입 정의
+// ============================================
+
+// --- 공통 타입 ---
+
+export type UserRole = 'super_admin' | 'instructor' | 'student';
+
 export type GoalCategory =
   | "certificate"
   | "skill"
@@ -12,10 +20,18 @@ export type ProjectStatus = "planning" | "in_progress" | "completed";
 
 export type CertificateType = "certificate" | "award" | "completion";
 
+export type UploadDocumentStatus = 'uploaded' | 'reviewing' | 'reviewed' | 'failed';
+
+export type CounselingType = 'career' | 'resume' | 'interview' | 'mental' | 'other';
+
+export type FileType = 'pdf' | 'docx' | 'hwp' | 'txt' | 'other';
+
+// --- 프로필 ---
+
 export interface Profile {
   id: string;
-  name: string;
   email: string | null;
+  name: string;
   school: string | null;
   department: string | null;
   grade: number | null;
@@ -24,11 +40,19 @@ export interface Profile {
   bio: string | null;
   avatar_url: string | null;
   is_public: boolean;
-  role: 'user' | 'admin';
+  role: UserRole;
+  instructor_id: string | null;
+  gemini_api_key: string | null;
+  invite_code: string | null;
+  is_active: boolean;
+  phone: string | null;
+  student_email: string | null;
   is_onboarded: boolean;
   created_at: string;
   updated_at: string;
 }
+
+// --- 로드맵 ---
 
 export interface RoadmapGoal {
   id: string;
@@ -55,6 +79,8 @@ export interface Milestone {
   order_index: number;
 }
 
+// --- 일일 기록 ---
+
 export interface DailyLog {
   id: string;
   user_id: string;
@@ -76,6 +102,8 @@ export interface DailyTask {
   completed_at: string | null;
   order_index: number;
 }
+
+// --- 포트폴리오 ---
 
 export interface Project {
   id: string;
@@ -104,6 +132,8 @@ export interface ProjectFile {
   file_size: number | null;
   uploaded_at: string;
 }
+
+// --- 자격증 & 스킬 ---
 
 export interface Certificate {
   id: string;
@@ -135,6 +165,164 @@ export interface Streak {
   total_active_days: number;
 }
 
+// --- 업로드 문서 ---
+
+export interface UploadedResume {
+  id: string;
+  user_id: string;
+  uploaded_by: string | null;
+  instructor_id: string | null;
+  title: string;
+  file_name: string;
+  file_url: string;
+  file_type: FileType | null;
+  file_size: number | null;
+  version: number;
+  status: UploadDocumentStatus;
+  ai_review_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UploadedCoverLetter {
+  id: string;
+  user_id: string;
+  uploaded_by: string | null;
+  instructor_id: string | null;
+  title: string;
+  target_company: string | null;
+  file_name: string | null;
+  file_url: string | null;
+  file_type: FileType | null;
+  file_size: number | null;
+  content: string | null;
+  version: number;
+  status: UploadDocumentStatus;
+  ai_review_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- AI 리뷰 ---
+
+export interface AIReviewResult {
+  id: string;
+  user_id: string;
+  instructor_id: string | null;
+  document_type: 'resume' | 'cover_letter';
+  document_id: string;
+  original_content: string | null;
+  revised_content: string | null;
+  feedback: string | null;
+  improvement_points: Record<string, unknown>[];
+  score: number | null;
+  model_used: string;
+  tokens_used: number | null;
+  processing_time: number | null;
+  requested_by: string | null;
+  created_at: string;
+  // 레거시 호환 (기존 컬럼)
+  overall_score?: number | null;
+  reviewer_comment?: string | null;
+  reviewed_at?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  model_name?: string;
+}
+
+// --- 상담 기록 ---
+
+export interface CounselingRecord {
+  id: string;
+  user_id: string;
+  counselor_id: string;
+  instructor_id: string | null;
+  title: string;
+  content: string | null;
+  counseling_type: CounselingType;
+  counseling_date: string;
+  is_completed: boolean;
+  action_items: string | null;
+  next_counseling_date: string | null;
+  ai_suggestion: AICounselingSuggestion | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CounselingRecordWithStudent extends CounselingRecord {
+  profiles: {
+    name: string;
+    school: string | null;
+    department: string | null;
+    grade: number | null;
+    avatar_url: string | null;
+    target_field: string | null;
+  };
+}
+
+export interface AICounselingSuggestion {
+  suggested_topics: string[];
+  key_observations: string[];
+  action_suggestions: string[];
+  concerns?: string[];
+  encouragement: string;
+}
+
+// --- 이력서 직접 작성 ---
+
+export interface Experience {
+  id: string;
+  title: string;
+  organization: string;
+  period: string;
+  description: string;
+}
+
+export interface ResumeDataRow {
+  id: string;
+  user_id: string;
+  instructor_id: string | null;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  target_field: string;
+  intro: string;
+  avatar_url: string | null;
+  school_name: string;
+  department: string;
+  grade: number | null;
+  enrollment_period: string;
+  gpa: string;
+  courses: string[];
+  selected_cert_ids: string[];
+  cert_order: string[];
+  selected_project_ids: string[];
+  project_order: string[];
+  selected_skill_ids: string[];
+  experiences: Experience[];
+  self_pr: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- 자소서 직접 작성 ---
+
+export interface CoverLetterData {
+  id: string;
+  user_id: string;
+  instructor_id: string | null;
+  title: string;
+  target_company: string | null;
+  growth: string | null;
+  personality: string | null;
+  motivation: string | null;
+  aspiration: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 레거시 호환 (기존 CoverLetter 타입)
 export interface CoverLetter {
   id: string;
   user_id: string;
@@ -148,65 +336,23 @@ export interface CoverLetter {
   updated_at: string;
 }
 
-export type UploadDocumentStatus = 'uploaded' | 'reviewing' | 'reviewed' | 'failed';
+// --- 이메일 로그 ---
 
-export interface UploadedResume {
+export interface EmailLog {
   id: string;
-  user_id: string;
-  title: string | null;
-  file_url: string;
-  file_name: string;
-  file_size: number | null;
-  file_type: string | null;
-  status: UploadDocumentStatus;
-  uploaded_by: string | null;
-  uploaded_at: string;
-}
-
-export interface UploadedCoverLetter {
-  id: string;
-  user_id: string;
-  title: string | null;
-  file_url: string;
-  file_name: string;
-  file_size: number | null;
-  file_type: string | null;
-  status: UploadDocumentStatus;
-  uploaded_by: string | null;
-  uploaded_at: string;
-}
-
-export interface StudentListItem {
-  id: string;
-  name: string;
-  email: string | null;
-  school: string | null;
-  department: string | null;
-  grade: number | null;
-  target_field: string | null;
-  avatar_url: string | null;
+  instructor_id: string;
+  student_id: string;
+  recipient_email: string;
+  subject: string;
+  content_type: 'ai_review' | 'counseling' | 'custom';
+  document_id: string | null;
+  status: 'pending' | 'sent' | 'failed';
+  sent_at: string | null;
+  error_message: string | null;
   created_at: string;
-  project_count: number;
-  certificate_count: number;
-  last_active_date: string | null;
-  current_streak: number;
 }
 
-export interface AIReviewResult {
-  id: string;
-  user_id: string;
-  document_type: 'resume' | 'cover_letter';
-  document_id: string;
-  overall_score: number | null;
-  improvement_points: Record<string, unknown>[];
-  reviewer_comment: string | null;
-  reviewed_at: string;
-  input_tokens: number;
-  output_tokens: number;
-  model_name: string;
-}
-
-// --- AI 분석센터 타입 ---
+// --- AI 분석센터 ---
 
 export interface AIStudentAnalysis {
   id: string;
@@ -247,76 +393,20 @@ export interface JobMatch {
   preparation_tips: string;
 }
 
-export type CounselingType = 'career' | 'resume' | 'interview' | 'mental' | 'other';
+// --- 학생 목록 (강사/관리자용) ---
 
-export interface AICounselingSuggestion {
-  suggested_topics: string[];
-  key_observations: string[];
-  action_suggestions: string[];
-  concerns?: string[];
-  encouragement: string;
-}
-
-export interface CounselingRecord {
+export interface StudentListItem {
   id: string;
-  user_id: string;
-  counselor_id: string;
-  title: string;
-  content: string | null;
-  counseling_type: CounselingType;
-  is_completed: boolean;
-  action_items: string | null;
-  next_counseling_date: string | null;
-  ai_suggestion: AICounselingSuggestion | null;
-  counseling_date: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// --- 이력서 DB 저장 타입 ---
-
-export interface Experience {
-  id: string;
-  title: string;
-  organization: string;
-  period: string;
-  description: string;
-}
-
-export interface ResumeDataRow {
-  id: string;
-  user_id: string;
   name: string;
-  email: string;
-  phone: string;
-  address: string;
-  target_field: string;
-  intro: string;
-  avatar_url: string | null;
-  school_name: string;
-  department: string;
+  email: string | null;
+  school: string | null;
+  department: string | null;
   grade: number | null;
-  enrollment_period: string;
-  gpa: string;
-  courses: string[];
-  selected_cert_ids: string[];
-  cert_order: string[];
-  selected_project_ids: string[];
-  project_order: string[];
-  selected_skill_ids: string[];
-  experiences: Experience[];
-  self_pr: string;
+  target_field: string | null;
+  avatar_url: string | null;
   created_at: string;
-  updated_at: string;
-}
-
-export interface CounselingRecordWithStudent extends CounselingRecord {
-  profiles: {
-    name: string;
-    school: string | null;
-    department: string | null;
-    grade: number | null;
-    avatar_url: string | null;
-    target_field: string | null;
-  };
+  project_count: number;
+  certificate_count: number;
+  last_active_date: string | null;
+  current_streak: number;
 }

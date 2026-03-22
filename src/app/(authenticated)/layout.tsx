@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   X,
   User,
+  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -116,6 +117,20 @@ export default function AuthenticatedLayout({
               </Link>
             );
           })}
+
+          {/* 강사/관리자용 관리 페이지 링크 */}
+          {(profile?.role === "instructor" || profile?.role === "super_admin") && (
+            <>
+              <hr className="border-gray-100 my-2" />
+              <Link
+                href="/admin/dashboard"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-purple-600 hover:bg-purple-50 transition-colors font-medium"
+              >
+                <ArrowRight className="w-5 h-5 flex-shrink-0" />
+                강사 관리 페이지
+              </Link>
+            </>
+          )}
         </nav>
 
         {/* 프로필 미니카드 */}
@@ -251,6 +266,20 @@ export default function AuthenticatedLayout({
                   </Link>
                 );
               })}
+              {/* 강사/관리자 링크 */}
+              {(profile?.role === "instructor" || profile?.role === "super_admin") && (
+                <>
+                  <hr className="border-gray-100 my-1" />
+                  <Link
+                    href="/admin/dashboard"
+                    onClick={() => setMoreOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-purple-600 hover:bg-purple-50 font-medium transition-colors"
+                  >
+                    <ArrowRight className="w-5 h-5" />
+                    강사 관리 페이지
+                  </Link>
+                </>
+              )}
               <button
                 onClick={handleSignOut}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-red-500 hover:bg-red-50 w-full transition-colors"

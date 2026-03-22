@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { createClient } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
@@ -15,32 +15,118 @@ import {
   BookOpen,
   GraduationCap,
   Phone,
-  GraduationCap as InstructorIcon,
+  KeyRound,
+  CheckCircle2,
+  XCircle,
+  Target,
 } from "lucide-react";
+import { generateInviteCodeSync } from "@/lib/invite";
+import type { EducationLevel } from "@/lib/types";
 
 type SignupRole = "student" | "instructor";
 
 export default function SignupPage() {
-  const [role, setRole] = useState<SignupRole>("instructor");
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    }>
+      <SignupForm />
+    </Suspense>
+  );
+}
+
+function SignupForm() {
+  const searchParams = useSearchParams();
+  const inviteFromUrl = searchParams.get("invite") || "";
+
+  const [role, setRole] = useState<SignupRole>(inviteFromUrl ? "student" : "instructor");
   const [form, setForm] = useState({
     email: "",
     password: "",
     passwordConfirm: "",
     name: "",
     phone: "",
-    // student fields
     school: "",
     department: "",
     grade: "",
-    inviteCode: "",
+    inviteCode: inviteFromUrl,
+    instructorCode: "",
+    educationLevel: "" as EducationLevel | "",
+    targetField: "",
   });
   const [loading, setLoading] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<{
+    valid: boolean;
+    instructorName?: string;
+    instructorId?: string;
+  } | null>(null);
+  const [inviteChecking, setInviteChecking] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  // 초대코드 실시간 검증
+  const verifyInviteCode = useCallback(
+    async (code: string) => {
+      if (!code || code.length < 4) {
+        setInviteStatus(null);
+        return;
+      }
+
+      setInviteChecking(true);
+      try {
+        const res = await fetch("/api/auth/verify-invite-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invite_code: code }),
+        });
+        const data = await res.json();
+        setInviteStatus(data);
+      } catch {
+        setInviteStatus(null);
+      }
+      setInviteChecking(false);
+    },
+    []
+  );
+
+  // URL에서 초대코드가 있으면 즉시 검증
+  useEffect(() => {
+    if (inviteFromUrl) {
+      verifyInviteCode(inviteFromUrl);
+    }
+  }, [inviteFromUrl, verifyInviteCode]);
+
+  // 초대코드 입력시 디바운스 검증
+  useEffect(() => {
+    if (role !== "student" || !form.inviteCode) return;
+    const timer = setTimeout(() => {
+      verifyInviteCode(form.inviteCode);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [form.inviteCode, role, verifyInviteCode]);
+
+  // 학교급에 따른 학년 옵션
+  const gradeOptions =
+    form.educationLevel === "high_school"
+      ? [
+          { value: "1", label: "1학년" },
+          { value: "2", label: "2학년" },
+          { value: "3", label: "3학년" },
+        ]
+      : form.educationLevel === "university"
+        ? [
+            { value: "1", label: "1학년" },
+            { value: "2", label: "2학년" },
+            { value: "3", label: "3학년" },
+            { value: "4", label: "4학년" },
+          ]
+        : [];
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,31 +146,32 @@ export default function SignupPage() {
       return;
     }
 
-    // 학생인 경우 초대코드 필수
-    if (role === "student" && !form.inviteCode) {
-      toast.error("강사 초대코드를 입력해주세요.");
-      return;
+    // 강사: 가입 코드 검증
+    if (role === "instructor") {
+      const validCode = process.env.NEXT_PUBLIC_INSTRUCTOR_SIGNUP_CODE;
+      if (!form.instructorCode || form.instructorCode !== validCode) {
+        toast.error("강사 가입 코드가 올바르지 않습니다.");
+        return;
+      }
+    }
+
+    // 학생: 초대코드 검증
+    if (role === "student") {
+      if (!form.inviteCode) {
+        toast.error("강사 초대코드를 입력해주세요.");
+        return;
+      }
+      if (!inviteStatus?.valid) {
+        toast.error("유효하지 않은 초대코드입니다.");
+        return;
+      }
+      if (!form.school || !form.department || !form.educationLevel) {
+        toast.error("학교, 학과, 학교급은 필수 항목입니다.");
+        return;
+      }
     }
 
     setLoading(true);
-
-    // 학생: 초대코드로 강사 찾기
-    let instructorId: string | null = null;
-    if (role === "student" && form.inviteCode) {
-      const { data: instructor } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("invite_code", form.inviteCode)
-        .eq("role", "instructor")
-        .single();
-
-      if (!instructor) {
-        toast.error("유효하지 않은 초대코드입니다.");
-        setLoading(false);
-        return;
-      }
-      instructorId = instructor.id;
-    }
 
     const { error } = await supabase.auth.signUp({
       email: form.email,
@@ -120,23 +207,23 @@ export default function SignupPage() {
     if (user) {
       try {
         const profileUpdate: Record<string, unknown> = {
+          name: form.name,
           phone: form.phone || null,
         };
+
+        if (role === "instructor") {
+          profileUpdate.invite_code = generateInviteCodeSync();
+          profileUpdate.is_onboarded = false;
+          profileUpdate.school = form.school || null;
+        }
 
         if (role === "student") {
           profileUpdate.school = form.school || null;
           profileUpdate.department = form.department || null;
           profileUpdate.grade = form.grade ? parseInt(form.grade) : null;
-          profileUpdate.instructor_id = instructorId;
-        }
-
-        if (role === "instructor") {
-          // 초대코드 자동 생성 (8자리 랜덤)
-          const inviteCode = Math.random()
-            .toString(36)
-            .substring(2, 10)
-            .toUpperCase();
-          profileUpdate.invite_code = inviteCode;
+          profileUpdate.instructor_id = inviteStatus?.instructorId || null;
+          profileUpdate.education_level = form.educationLevel || null;
+          profileUpdate.target_field = form.targetField || null;
           profileUpdate.is_onboarded = false;
         }
 
@@ -153,11 +240,11 @@ export default function SignupPage() {
       }
     }
 
-    toast.success("회원가입이 완료되었습니다!");
-
     if (role === "instructor") {
+      toast.success("강사 계정이 생성되었습니다!");
       router.push("/onboarding");
     } else {
+      toast.success("학생 계정이 생성되었습니다!");
       router.push("/dashboard");
     }
     router.refresh();
@@ -178,40 +265,85 @@ export default function SignupPage() {
             </p>
           </div>
 
-          {/* 역할 선택 */}
-          <div className="flex gap-3 mb-6">
+          {/* 역할 선택 세그먼트 */}
+          <div className="flex rounded-xl border-2 border-gray-200 overflow-hidden mb-6">
             <button
               type="button"
               onClick={() => setRole("instructor")}
-              className={`flex-1 py-3 px-4 rounded-xl border-2 text-center font-medium transition-all ${
+              className={`flex-1 py-3 px-4 text-center font-medium transition-all flex items-center justify-center gap-2 ${
                 role === "instructor"
-                  ? "border-purple-500 bg-purple-50 text-purple-700"
-                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  ? "bg-purple-500 text-white"
+                  : "bg-white text-gray-500 hover:bg-gray-50"
               }`}
             >
-              <InstructorIcon
-                className={`w-5 h-5 mx-auto mb-1 ${role === "instructor" ? "text-purple-500" : "text-gray-400"}`}
-              />
-              <div className="text-sm">강사</div>
+              <GraduationCap className="w-4 h-4" />
+              <span className="text-sm">강사로 가입</span>
             </button>
             <button
               type="button"
               onClick={() => setRole("student")}
-              className={`flex-1 py-3 px-4 rounded-xl border-2 text-center font-medium transition-all ${
+              className={`flex-1 py-3 px-4 text-center font-medium transition-all flex items-center justify-center gap-2 ${
                 role === "student"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  ? "bg-blue-500 text-white"
+                  : "bg-white text-gray-500 hover:bg-gray-50"
               }`}
             >
-              <User
-                className={`w-5 h-5 mx-auto mb-1 ${role === "student" ? "text-blue-500" : "text-gray-400"}`}
-              />
-              <div className="text-sm">학생</div>
+              <User className="w-4 h-4" />
+              <span className="text-sm">학생으로 가입</span>
             </button>
           </div>
 
+          {role === "student" && (
+            <p className="text-xs text-gray-400 text-center mb-4">
+              학생 가입은 강사의 초대 코드가 필요합니다
+            </p>
+          )}
+
           {/* 폼 */}
           <form onSubmit={handleSignup} className="space-y-4">
+            {/* 학생: 초대코드 (최상단) */}
+            {role === "student" && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  초대 코드 <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={form.inviteCode}
+                    onChange={(e) =>
+                      updateField("inviteCode", e.target.value.toUpperCase())
+                    }
+                    placeholder="선생님에게 받은 초대 코드를 입력하세요"
+                    className="w-full pl-11 pr-10 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-gray-900 placeholder:text-gray-400"
+                    required
+                  />
+                  {inviteChecking && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-400" />
+                  )}
+                  {!inviteChecking && inviteStatus?.valid && (
+                    <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
+                  )}
+                  {!inviteChecking &&
+                    inviteStatus !== null &&
+                    !inviteStatus.valid && (
+                      <XCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-red-500" />
+                    )}
+                </div>
+                {inviteStatus?.valid && (
+                  <p className="text-xs text-green-500 mt-1">
+                    {inviteStatus.instructorName} 선생님의 클래스입니다
+                  </p>
+                )}
+                {inviteStatus !== null && !inviteStatus.valid && form.inviteCode.length >= 4 && (
+                  <p className="text-xs text-red-500 mt-1">
+                    유효하지 않은 초대 코드입니다
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* 이메일 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -291,10 +423,29 @@ export default function SignupPage() {
               </div>
             </div>
 
-            {/* 전화번호 */}
+            {/* 소속 학교/기관 (강사) */}
+            {role === "instructor" && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  소속 학교/기관
+                </label>
+                <div className="relative">
+                  <School className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={form.school}
+                    onChange={(e) => updateField("school", e.target.value)}
+                    placeholder="소속 학교 또는 기관명"
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 placeholder:text-gray-400"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 연락처 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                전화번호
+                연락처
               </label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -302,45 +453,44 @@ export default function SignupPage() {
                   type="tel"
                   value={form.phone}
                   onChange={(e) => updateField("phone", e.target.value)}
-                  placeholder="010-1234-5678"
+                  placeholder="010-0000-0000"
                   className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 placeholder:text-gray-400"
                 />
               </div>
             </div>
 
+            {/* 강사: 가입 코드 */}
+            {role === "instructor" && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  강사 가입 코드 <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={form.instructorCode}
+                    onChange={(e) =>
+                      updateField("instructorCode", e.target.value)
+                    }
+                    placeholder="강사 가입 코드를 입력하세요"
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-colors text-gray-900 placeholder:text-gray-400"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  강사 가입 코드는 플랫폼 운영자에게 문의하세요
+                </p>
+              </div>
+            )}
+
             {/* 학생 전용 필드 */}
             {role === "student" && (
               <>
-                {/* 초대코드 */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    강사 초대코드 <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      value={form.inviteCode}
-                      onChange={(e) =>
-                        updateField(
-                          "inviteCode",
-                          e.target.value.toUpperCase()
-                        )
-                      }
-                      placeholder="강사에게 받은 초대코드"
-                      className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 placeholder:text-gray-400"
-                      required
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">
-                    담당 강사에게 초대코드를 요청하세요
-                  </p>
-                </div>
-
                 {/* 학교명 */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    학교명
+                    학교 <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <School className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -348,34 +498,59 @@ export default function SignupPage() {
                       type="text"
                       value={form.school}
                       onChange={(e) => updateField("school", e.target.value)}
-                      placeholder="OO대학교"
+                      placeholder="OO고등학교 또는 OO대학교"
                       className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 placeholder:text-gray-400"
+                      required
                     />
                   </div>
                 </div>
 
-                {/* 학과 & 학년 */}
+                {/* 학과/전공 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    학과/전공 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={form.department}
+                      onChange={(e) =>
+                        updateField("department", e.target.value)
+                      }
+                      placeholder="컴퓨터공학과"
+                      className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 placeholder:text-gray-400"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* 학교급 & 학년 */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      학과
+                      학교급 <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
-                      <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={form.department}
-                        onChange={(e) =>
-                          updateField("department", e.target.value)
-                        }
-                        placeholder="컴퓨터공학과"
-                        className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 placeholder:text-gray-400"
-                      />
+                      <School className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <select
+                        value={form.educationLevel}
+                        onChange={(e) => {
+                          updateField("educationLevel", e.target.value);
+                          updateField("grade", ""); // 학교급 변경시 학년 초기화
+                        }}
+                        className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 appearance-none bg-white"
+                        required
+                      >
+                        <option value="">선택</option>
+                        <option value="high_school">특성화고</option>
+                        <option value="university">대학교</option>
+                      </select>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      학년
+                      학년 <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -383,13 +558,36 @@ export default function SignupPage() {
                         value={form.grade}
                         onChange={(e) => updateField("grade", e.target.value)}
                         className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 appearance-none bg-white"
+                        required
+                        disabled={!form.educationLevel}
                       >
                         <option value="">선택</option>
-                        <option value="1">1학년</option>
-                        <option value="2">2학년</option>
-                        <option value="3">3학년</option>
+                        {gradeOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
+                  </div>
+                </div>
+
+                {/* 희망 분야 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    희망 분야
+                  </label>
+                  <div className="relative">
+                    <Target className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={form.targetField}
+                      onChange={(e) =>
+                        updateField("targetField", e.target.value)
+                      }
+                      placeholder="예: 웹개발, 데이터분석"
+                      className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-gray-900 placeholder:text-gray-400"
+                    />
                   </div>
                 </div>
               </>

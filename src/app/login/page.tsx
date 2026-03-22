@@ -39,15 +39,18 @@ export default function LoginPage() {
       return;
     }
 
-    // role 확인 후 관리자/학생 분기
+    // role 확인 후 역할별 리다이렉트
     let redirectTo = "/dashboard";
     if (data.user) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, is_onboarded")
         .eq("id", data.user.id)
         .single();
-      if (profile?.role === "super_admin" || profile?.role === "instructor") {
+
+      if (profile?.role === "instructor") {
+        redirectTo = profile.is_onboarded ? "/admin/dashboard" : "/onboarding";
+      } else if (profile?.role === "super_admin") {
         redirectTo = "/admin/dashboard";
       }
     }

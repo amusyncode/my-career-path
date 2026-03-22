@@ -10,7 +10,19 @@ import {
   CalendarClock,
   Search,
   Plus,
+  BarChart3,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const PieChart = dynamic(() => import("recharts").then((m) => m.PieChart), { ssr: false });
+const Pie = dynamic(() => import("recharts").then((m) => m.Pie), { ssr: false });
+const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
 import CounselingListSkeleton from "./_components/CounselingListSkeleton";
 import CounselingRecordCard from "./_components/CounselingRecordCard";
 import UpcomingCounselingList from "./_components/UpcomingCounselingList";
@@ -48,6 +60,11 @@ export default function CounselingListPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [periodFilter, setPeriodFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+
+  // 차트
+  const [typeChartData, setTypeChartData] = useState<{ name: string; value: number; color: string }[]>([]);
+  const [monthlyChartData, setMonthlyChartData] = useState<{ month: string; count: number }[]>([]);
+  const [showCharts, setShowCharts] = useState(false);
 
   // 모달
   const [showModal, setShowModal] = useState(false);
@@ -206,10 +223,59 @@ export default function CounselingListPage() {
     setIsLoading(false);
   }, [supabase, debouncedSearch, typeFilter, statusFilter, periodFilter, page]);
 
+  // 차트 데이터 조회
+  const fetchChartData = useCallback(async () => {
+    try {
+      const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+        career: { label: "진로", color: "#8B5CF6" },
+        resume: { label: "이력서", color: "#3B82F6" },
+        interview: { label: "면접", color: "#10B981" },
+        mental: { label: "고충", color: "#F59E0B" },
+        other: { label: "기타", color: "#6B7280" },
+      };
+
+      // 유형별 분포
+      const { data: allRecords } = await supabase
+        .from("counseling_records")
+        .select("counseling_type, counseling_date");
+
+      if (allRecords && allRecords.length > 0) {
+        // 유형별 카운트
+        const typeCounts: Record<string, number> = {};
+        allRecords.forEach((r) => {
+          const t = r.counseling_type || "other";
+          typeCounts[t] = (typeCounts[t] || 0) + 1;
+        });
+        setTypeChartData(
+          Object.entries(typeCounts).map(([key, value]) => ({
+            name: TYPE_CONFIG[key]?.label || key,
+            value,
+            color: TYPE_CONFIG[key]?.color || "#6B7280",
+          }))
+        );
+
+        // 월별 추이 (최근 6개월)
+        const now = new Date();
+        const months: { month: string; count: number }[] = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          const label = `${d.getMonth() + 1}월`;
+          const count = allRecords.filter((r) => r.counseling_date?.startsWith(key)).length;
+          months.push({ month: label, count });
+        }
+        setMonthlyChartData(months);
+      }
+    } catch (err) {
+      console.error("차트 데이터 조회 실패:", err);
+    }
+  }, [supabase]);
+
   useEffect(() => {
     fetchStats();
     fetchUpcoming();
-  }, [fetchStats, fetchUpcoming]);
+    fetchChartData();
+  }, [fetchStats, fetchUpcoming, fetchChartData]);
 
   useEffect(() => {
     fetchRecords();
@@ -441,6 +507,76 @@ export default function CounselingListPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* 상담 통계 차트 */}
+      {(typeChartData.length > 0 || monthlyChartData.length > 0) && (
+        <div>
+          <button
+            onClick={() => setShowCharts((v) => !v)}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-purple-600 transition-colors mb-4"
+          >
+            <BarChart3 className="w-4 h-4" />
+            {showCharts ? "차트 접기" : "상담 통계 차트 보기"}
+          </button>
+          {showCharts && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* 유형별 분포 파이차트 */}
+              {typeChartData.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">상담 유형 분포</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={typeChartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                          nameKey="name"
+                          label
+                        >
+                          {typeChartData.map((entry, idx) => (
+                            <Cell key={`cell-${idx}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-3 mt-2">
+                    {typeChartData.map((item) => (
+                      <div key={item.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                        {item.name} ({item.value}건)
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 월별 상담 추이 바차트 */}
+              {monthlyChartData.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">월별 상담 건수</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlyChartData}>
+                        <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                        <Tooltip />
+                        <Bar dataKey="count" name="상담 건수" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* 새 상담 기록 모달 */}

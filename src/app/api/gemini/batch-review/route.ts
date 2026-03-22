@@ -3,6 +3,8 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { generateReview } from "@/lib/gemini";
 import { buildResumeReviewPrompt, buildCoverLetterReviewPrompt } from "@/lib/prompts";
 import { extractTextFromFile } from "@/lib/file-parser";
+import { selectGemForStudentServer, incrementGemUsageServer } from "@/lib/gems";
+import type { GemCategory } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,12 +79,24 @@ export async function POST(request: NextRequest) {
       // 텍스트 추출
       const text = await extractTextFromFile(buffer, mimeType);
 
+      // Gem 선택
+      const gemCategory: GemCategory = document_type === "resume" ? "resume" : "cover_letter";
+      const gem = await selectGemForStudentServer(
+        supabase, user_id, gemCategory
+      );
+
       // 프롬프트 생성 및 AI 리뷰
       const prompt = document_type === "resume"
         ? buildResumeReviewPrompt(text)
         : buildCoverLetterReviewPrompt(text);
 
-      const { data: result, usage } = await generateReview(prompt);
+      const { data: result, usage } = await generateReview(
+        prompt, gem?.system_prompt || undefined
+      );
+
+      if (gem) {
+        await incrementGemUsageServer(supabase, gem.id).catch(() => {});
+      }
 
       // ai_review_results에 저장
       await supabase.from("ai_review_results").insert({

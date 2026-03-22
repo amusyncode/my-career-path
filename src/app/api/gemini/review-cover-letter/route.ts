@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { generateReview } from "@/lib/gemini";
 import { buildCoverLetterReviewPrompt } from "@/lib/prompts";
 import { extractTextFromFile } from "@/lib/file-parser";
+import { selectGemForStudentServer, incrementGemUsageServer } from "@/lib/gems";
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +16,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    const gemId = formData.get("gem_id") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "파일이 필요합니다." }, { status: 400 });
@@ -32,10 +34,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    const prompt = buildCoverLetterReviewPrompt(text);
-    const { data: result, usage } = await generateReview(prompt);
+    // Gem 선택
+    const gem = await selectGemForStudentServer(
+      supabase, user.id, "cover_letter", gemId || undefined
+    );
 
-    return NextResponse.json({ ...result, usage });
+    const prompt = buildCoverLetterReviewPrompt(text);
+    const { data: result, usage } = await generateReview(
+      prompt, gem?.system_prompt || undefined
+    );
+
+    if (gem) {
+      await incrementGemUsageServer(supabase, gem.id).catch(() => {});
+    }
+
+    return NextResponse.json({ ...result, usage, gem_used: gem?.name || null });
   } catch (error) {
     console.error("자기소개서 리뷰 API 오류:", error);
     const message = error instanceof Error ? error.message : "서버 오류가 발생했습니다.";

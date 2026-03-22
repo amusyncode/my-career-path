@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { generateReview } from "@/lib/gemini";
 import { buildJobMatchingPrompt } from "@/lib/prompts";
+import { selectGemForStudentServer, incrementGemUsageServer } from "@/lib/gems";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { user_id, options } = body;
+    const { user_id, options, gem_id } = body;
 
     if (!user_id) {
       return NextResponse.json({ error: "user_id가 필요합니다." }, { status: 400 });
@@ -57,7 +58,18 @@ export async function POST(request: NextRequest) {
       options: options || {},
     });
 
-    const { data: result, usage } = await generateReview(prompt);
+    // Gem 선택
+    const gem = await selectGemForStudentServer(
+      supabase, user_id, "analysis", gem_id
+    );
+
+    const { data: result, usage } = await generateReview(
+      prompt, gem?.system_prompt || undefined
+    );
+
+    if (gem) {
+      await incrementGemUsageServer(supabase, gem.id).catch(() => {});
+    }
 
     // 분석 결과를 ai_student_analyses에 저장
     await supabase.from("ai_student_analyses").insert({

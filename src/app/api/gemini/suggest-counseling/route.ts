@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { generateReview } from "@/lib/gemini";
 import { buildCounselingSuggestionPrompt } from "@/lib/prompts";
+import { selectGemForStudentServer, incrementGemUsageServer } from "@/lib/gems";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { user_id } = body;
+    const { user_id, gem_id } = body;
 
     if (!user_id) {
       return NextResponse.json({ error: "user_id가 필요합니다." }, { status: 400 });
@@ -49,6 +50,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "학생 프로필을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    // Gem 선택
+    const gem = await selectGemForStudentServer(
+      supabase, user_id, "counseling", gem_id
+    );
+
     const prompt = buildCounselingSuggestionPrompt({
       name: profileRes.data.name,
       school: profileRes.data.school,
@@ -63,9 +69,15 @@ export async function POST(request: NextRequest) {
       recent_logs: logsRes.data || [],
     });
 
-    const { data: result } = await generateReview(prompt);
+    const { data: result } = await generateReview(
+      prompt, gem?.system_prompt || undefined
+    );
 
-    return NextResponse.json(result);
+    if (gem) {
+      await incrementGemUsageServer(supabase, gem.id).catch(() => {});
+    }
+
+    return NextResponse.json({ ...result, gem_used: gem?.name || null });
   } catch (error) {
     console.error("상담 제안 API 오류:", error);
     const message = error instanceof Error ? error.message : "서버 오류가 발생했습니다.";

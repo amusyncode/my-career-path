@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { generateReview } from "@/lib/gemini";
 import { buildStudentAnalysisPrompt } from "@/lib/prompts";
+import { selectGemForStudentServer, incrementGemUsageServer } from "@/lib/gems";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { user_id } = body;
+    const { user_id, gem_id } = body;
 
     if (!user_id) {
       return NextResponse.json({ error: "user_id가 필요합니다." }, { status: 400 });
@@ -43,6 +44,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "학생 프로필을 찾을 수 없습니다." }, { status: 404 });
     }
 
+    // Gem 선택
+    const gem = await selectGemForStudentServer(
+      supabase, user_id, "analysis", gem_id
+    );
+
     const prompt = buildStudentAnalysisPrompt({
       name: profileRes.data.name,
       school: profileRes.data.school,
@@ -57,7 +63,13 @@ export async function POST(request: NextRequest) {
       certificates: certsRes.data || [],
     });
 
-    const { data: result, usage } = await generateReview(prompt);
+    const { data: result, usage } = await generateReview(
+      prompt, gem?.system_prompt || undefined
+    );
+
+    if (gem) {
+      await incrementGemUsageServer(supabase, gem.id).catch(() => {});
+    }
 
     // 분석 결과를 ai_student_analyses에 저장
     await supabase.from("ai_student_analyses").insert({
@@ -69,7 +81,7 @@ export async function POST(request: NextRequest) {
       model_name: "gemini-2.5-flash",
     });
 
-    return NextResponse.json({ ...result, usage });
+    return NextResponse.json({ ...result, usage, gem_used: gem?.name || null });
   } catch (error) {
     console.error("학생 분석 API 오류:", error);
     const message = error instanceof Error ? error.message : "서버 오류가 발생했습니다.";

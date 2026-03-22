@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase";
 import type { Gem, EducationLevel, GemCategory } from "@/lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * 사용 가능한 Gem 목록 조회
@@ -174,4 +175,98 @@ export async function getGemCounts(): Promise<{
     all: gems.filter((g) => g.education_level === "all").length,
     total: gems.length,
   };
+}
+
+/**
+ * 서버사이드 Gem 선택 (API 라우트용)
+ * supabase 서버 클라이언트를 인자로 받음
+ */
+export async function selectGemForStudentServer(
+  supabase: SupabaseClient,
+  studentId: string,
+  category: GemCategory,
+  overrideGemId?: string
+): Promise<Gem | null> {
+  // 강사가 직접 gem_id를 지정한 경우
+  if (overrideGemId) {
+    const { data } = await supabase
+      .from("gems")
+      .select("*")
+      .eq("id", overrideGemId)
+      .eq("is_active", true)
+      .single();
+    return data as Gem | null;
+  }
+
+  // 학생 프로필 조회
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("education_level, department")
+    .eq("id", studentId)
+    .single();
+
+  const eduLevel = profile?.education_level || "high_school";
+  const dept = profile?.department || null;
+
+  // 모든 default Gem 후보 조회
+  const { data: gems } = await supabase
+    .from("gems")
+    .select("*")
+    .eq("category", category)
+    .eq("is_active", true)
+    .eq("is_default", true)
+    .order("sort_order", { ascending: true });
+
+  if (!gems || gems.length === 0) return null;
+  const candidates = gems as Gem[];
+
+  // 4단계 우선순위 매칭
+  if (dept) {
+    const match1 = candidates.find(
+      (g) => g.education_level === eduLevel && g.department === dept
+    );
+    if (match1) return match1;
+  }
+  const match2 = candidates.find(
+    (g) => g.education_level === eduLevel && g.department === null
+  );
+  if (match2) return match2;
+  if (dept) {
+    const match3 = candidates.find(
+      (g) => g.education_level === "all" && g.department === dept
+    );
+    if (match3) return match3;
+  }
+  const match4 = candidates.find(
+    (g) => g.education_level === "all" && g.department === null
+  );
+  if (match4) return match4;
+  return candidates[0] || null;
+}
+
+/**
+ * 서버사이드 Gem 사용 횟수 증가 (API 라우트용)
+ */
+export async function incrementGemUsageServer(
+  supabase: SupabaseClient,
+  gemId: string
+): Promise<void> {
+  const { error: rpcError } = await supabase.rpc("increment_gem_usage", {
+    gem_id: gemId,
+  });
+
+  if (rpcError) {
+    const { data: gem } = await supabase
+      .from("gems")
+      .select("usage_count")
+      .eq("id", gemId)
+      .single();
+
+    if (gem) {
+      await supabase
+        .from("gems")
+        .update({ usage_count: (gem.usage_count || 0) + 1 })
+        .eq("id", gemId);
+    }
+  }
 }

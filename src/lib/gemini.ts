@@ -33,8 +33,14 @@ export interface GenerateReviewResponse {
   } | null;
 }
 
-export async function generateReview(prompt: string): Promise<GenerateReviewResponse> {
-  const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+export async function generateReview(
+  prompt: string,
+  systemInstruction?: string
+): Promise<GenerateReviewResponse> {
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    ...(systemInstruction ? { systemInstruction } : {}),
+  });
 
   let lastError: Error | null = null;
 

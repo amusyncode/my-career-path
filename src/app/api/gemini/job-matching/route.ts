@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
       grade: profileRes.data.grade,
       target_field: profileRes.data.target_field,
       target_company: profileRes.data.target_company,
+      education_level: profileRes.data.education_level,
       goals: goalsRes.data || [],
       skills: skillsRes.data || [],
       projects: projectsRes.data || [],

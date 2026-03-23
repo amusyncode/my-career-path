@@ -169,6 +169,7 @@ export function buildJobMatchingPrompt(profileData: {
   grade?: number | null;
   target_field?: string | null;
   target_company?: string | null;
+  education_level?: string | null;
   goals?: { title: string; category: string; status: string }[];
   skills?: { name: string; level: number; category?: string | null }[];
   projects?: { title: string; tech_stack: string[]; status: string }[];
@@ -186,7 +187,26 @@ export function buildJobMatchingPrompt(profileData: {
   if (profileData.options?.portfolioBased !== false) optionDesc.push("포트폴리오 기반 매칭");
   if (profileData.options?.personalityBased) optionDesc.push("성격/적성 고려");
 
-  return `당신은 한국 IT 취업 시장에 정통한 커리어 매칭 전문가입니다.
+  const isHighSchool = profileData.education_level === "high_school";
+
+  const roleDesc = isHighSchool
+    ? `당신은 특성화고 학생의 취업 매칭 전문가입니다.
+고졸 취업 시장의 현실을 잘 이해하고 있습니다.
+
+[고졸 취업 특성 고려사항]
+- 대기업 생산직, 중소기업 기술직, 공기업 고졸 채용 등
+- 자격증과 현장실습 경험이 중요
+- 성장 가능성과 기본기를 어필`
+    : `당신은 대졸 신입 취업 매칭 전문가입니다.
+대졸 채용 시장의 트렌드를 잘 이해하고 있습니다.
+
+[대졸 취업 특성 고려사항]
+- 공채/수시채용, 인턴십 전환, 직무별 채용 등
+- 인턴 경험, 프로젝트, 자격증, 어학 성적 등 종합 평가
+- 직무 적합성과 성장 잠재력`;
+
+  return `${roleDesc}
+
 아래 학생의 프로필과 역량 데이터를 분석하여 최적의 직무를 매칭해주세요.
 
 ## 학생 프로필:

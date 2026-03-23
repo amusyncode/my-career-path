@@ -49,7 +49,7 @@ export default function LoginPage() {
         .single();
 
       if (profile?.role === "instructor") {
-        redirectTo = profile.is_onboarded ? "/admin/dashboard" : "/onboarding";
+        redirectTo = profile.is_onboarded ? "/instructor/dashboard" : "/onboarding";
       } else if (profile?.role === "super_admin") {
         redirectTo = "/admin/dashboard";
       }

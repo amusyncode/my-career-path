@@ -119,15 +119,27 @@ export default function AuthenticatedLayout({
           })}
 
           {/* 강사/관리자용 관리 페이지 링크 */}
-          {(profile?.role === "instructor" || profile?.role === "super_admin") && (
+          {profile?.role === "instructor" && (
             <>
               <hr className="border-gray-100 my-2" />
               <Link
-                href="/admin/dashboard"
+                href="/instructor/dashboard"
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-purple-600 hover:bg-purple-50 transition-colors font-medium"
               >
                 <ArrowRight className="w-5 h-5 flex-shrink-0" />
                 강사 관리 페이지
+              </Link>
+            </>
+          )}
+          {profile?.role === "super_admin" && (
+            <>
+              <hr className="border-gray-100 my-2" />
+              <Link
+                href="/admin/dashboard"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 transition-colors font-medium"
+              >
+                <ArrowRight className="w-5 h-5 flex-shrink-0" />
+                플랫폼 관리자 페이지
               </Link>
             </>
           )}
@@ -267,16 +279,29 @@ export default function AuthenticatedLayout({
                 );
               })}
               {/* 강사/관리자 링크 */}
-              {(profile?.role === "instructor" || profile?.role === "super_admin") && (
+              {profile?.role === "instructor" && (
                 <>
                   <hr className="border-gray-100 my-1" />
                   <Link
-                    href="/admin/dashboard"
+                    href="/instructor/dashboard"
                     onClick={() => setMoreOpen(false)}
                     className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-purple-600 hover:bg-purple-50 font-medium transition-colors"
                   >
                     <ArrowRight className="w-5 h-5" />
                     강사 관리 페이지
+                  </Link>
+                </>
+              )}
+              {profile?.role === "super_admin" && (
+                <>
+                  <hr className="border-gray-100 my-1" />
+                  <Link
+                    href="/admin/dashboard"
+                    onClick={() => setMoreOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-red-600 hover:bg-red-50 font-medium transition-colors"
+                  >
+                    <ArrowRight className="w-5 h-5" />
+                    플랫폼 관리자 페이지
                   </Link>
                 </>
               )}

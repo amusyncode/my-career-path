@@ -1,592 +1,585 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
-import type { Profile } from "@/lib/types";
-import { format, subDays, startOfWeek, endOfWeek, subWeeks } from "date-fns";
+import { format, subMonths, startOfMonth } from "date-fns";
 import { ko } from "date-fns/locale";
 import dynamic from "next/dynamic";
 import {
+  UserCog,
   Users,
-  UserCheck,
-  FileText,
-  MessageSquareHeart,
+  Sparkles,
+  Mail,
+  UserPlus,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import toast from "react-hot-toast";
 
-const AreaChart = dynamic(
-  () => import("recharts").then((m) => m.AreaChart),
-  { ssr: false }
-);
-const Area = dynamic(
-  () => import("recharts").then((m) => m.Area),
-  { ssr: false }
-);
-const PieChart = dynamic(
-  () => import("recharts").then((m) => m.PieChart),
-  { ssr: false }
-);
-const Pie = dynamic(
-  () => import("recharts").then((m) => m.Pie),
-  { ssr: false }
-);
-const Cell = dynamic(
-  () => import("recharts").then((m) => m.Cell),
-  { ssr: false }
-);
-const XAxis = dynamic(
-  () => import("recharts").then((m) => m.XAxis),
-  { ssr: false }
-);
-const YAxis = dynamic(
-  () => import("recharts").then((m) => m.YAxis),
-  { ssr: false }
-);
-const Tooltip = dynamic(
-  () => import("recharts").then((m) => m.Tooltip),
-  { ssr: false }
-);
-const ResponsiveContainer = dynamic(
-  () => import("recharts").then((m) => m.ResponsiveContainer),
-  { ssr: false }
-);
+// Recharts dynamic imports
+const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
 
-const PIE_COLORS = ["#8B5CF6", "#A78BFA", "#C4B5FD"];
+// --- Interfaces ---
 
-const COUNSELING_TYPE_BADGE: Record<string, { label: string; cls: string }> = {
-  career: { label: "진로", cls: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" },
-  resume: { label: "이력서", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
-  interview: { label: "면접", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
-  mental: { label: "고충", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" },
-  other: { label: "기타", cls: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300" },
-};
+interface StatsData {
+  totalInstructors: number;
+  activeInstructors: number;
+  inactiveInstructors: number;
+  totalStudents: number;
+  highSchoolStudents: number;
+  universityStudents: number;
+  monthlyAiReviews: number;
+  avgAiScore: number;
+  monthlyEmails: number;
+  failedEmails: number;
+  newInstructorsThisMonth: number;
+  newStudentsThisMonth: number;
+}
+
+interface MonthlyTrend {
+  month: string;
+  instructors: number;
+  students: number;
+}
+
+interface InstructorStudentCount {
+  id: string;
+  name: string;
+  school: string | null;
+  studentCount: number;
+}
+
+interface RecentInstructor {
+  id: string;
+  name: string;
+  email: string | null;
+  school: string | null;
+  studentCount: number;
+  hasApiKey: boolean;
+  created_at: string;
+}
 
 interface RecentStudent {
   id: string;
   name: string;
   school: string | null;
-  department: string | null;
-  grade: number | null;
+  education_level: string;
+  instructor_name: string | null;
   created_at: string;
 }
 
-interface RecentReview {
-  id: string;
-  user_id: string;
-  document_type: "resume" | "cover_letter";
-  overall_score: number | null;
-  reviewed_at: string;
-  student_name: string;
-}
-
-interface UpcomingCounseling {
-  id: string;
-  title: string;
-  counseling_type: string;
-  next_counseling_date: string;
-  student_name: string;
-}
-
-interface WeeklyActivity {
-  week: string;
+interface ScoreDistribution {
+  range: string;
   count: number;
+  color: string;
 }
 
-interface GradeDistribution {
-  name: string;
-  value: number;
-  grade: number;
-}
+const SCORE_COLORS = ["#EF4444", "#F97316", "#EAB308", "#84CC16", "#22C55E"];
 
-export default function AdminDashboardPage() {
+export default function SuperAdminDashboardPage() {
   const supabase = createClient();
 
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // 통계
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [newStudentsThisWeek, setNewStudentsThisWeek] = useState(0);
-  const [activeStudents, setActiveStudents] = useState(0);
-  const [totalDocs, setTotalDocs] = useState(0);
-  const [reviewedDocs, setReviewedDocs] = useState(0);
-  const [monthlyCounseling, setMonthlyCounseling] = useState(0);
-  const [inProgressCounseling, setInProgressCounseling] = useState(0);
-
-  // 차트
-  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivity[]>([]);
-  const [gradeDistribution, setGradeDistribution] = useState<GradeDistribution[]>([]);
-
-  // 리스트
+  const [stats, setStats] = useState<StatsData>({
+    totalInstructors: 0,
+    activeInstructors: 0,
+    inactiveInstructors: 0,
+    totalStudents: 0,
+    highSchoolStudents: 0,
+    universityStudents: 0,
+    monthlyAiReviews: 0,
+    avgAiScore: 0,
+    monthlyEmails: 0,
+    failedEmails: 0,
+    newInstructorsThisMonth: 0,
+    newStudentsThisMonth: 0,
+  });
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrend[]>([]);
+  const [topInstructors, setTopInstructors] = useState<InstructorStudentCount[]>([]);
+  const [recentInstructors, setRecentInstructors] = useState<RecentInstructor[]>([]);
   const [recentStudents, setRecentStudents] = useState<RecentStudent[]>([]);
-  const [reviewStatusCounts, setReviewStatusCounts] = useState({ uploaded: 0, reviewing: 0, reviewed: 0 });
-  const [recentReviews, setRecentReviews] = useState<RecentReview[]>([]);
-  const [upcomingCounseling, setUpcomingCounseling] = useState<UpcomingCounseling[]>([]);
-
-  const fetchDashboard = useCallback(async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // 프로필
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-      if (profileData) setProfile(profileData as Profile);
-
-      const today = new Date();
-      const todayStr = format(today, "yyyy-MM-dd");
-      const sevenDaysAgo = format(subDays(today, 7), "yyyy-MM-dd");
-      const monthStart = format(new Date(today.getFullYear(), today.getMonth(), 1), "yyyy-MM-dd");
-
-      // === 병렬 쿼리 ===
-      const [
-        totalStudentsRes,
-        newStudentsRes,
-        activeStudentsRes,
-        resumeCountRes,
-        coverLetterCountRes,
-        reviewedDocsRes,
-        monthlyCounselingRes,
-        inProgressCounselingRes,
-        recentStudentsRes,
-        uploadedStatusRes,
-        reviewingStatusRes,
-        reviewedStatusRes,
-        gradeRes,
-      ] = await Promise.all([
-        // 전체 학생 수
-        supabase
-          .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .eq("role", "user"),
-        // 이번 주 신규 가입
-        supabase
-          .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .eq("role", "user")
-          .gte("created_at", sevenDaysAgo),
-        // 활성 학생 (최근 7일 daily_logs)
-        supabase
-          .from("daily_logs")
-          .select("user_id")
-          .gte("log_date", sevenDaysAgo),
-        // 업로드 이력서 수
-        supabase
-          .from("uploaded_resumes")
-          .select("id", { count: "exact", head: true }),
-        // 업로드 자소서 수
-        supabase
-          .from("uploaded_cover_letters")
-          .select("id", { count: "exact", head: true }),
-        // AI 첨삭 완료 수
-        supabase
-          .from("ai_review_results")
-          .select("id", { count: "exact", head: true }),
-        // 이번 달 상담
-        supabase
-          .from("counseling_records")
-          .select("id", { count: "exact", head: true })
-          .gte("counseling_date", monthStart),
-        // 미완료 상담
-        supabase
-          .from("counseling_records")
-          .select("id", { count: "exact", head: true })
-          .eq("is_completed", false),
-        // 최근 가입 학생 5명
-        supabase
-          .from("profiles")
-          .select("id, name, school, department, grade, created_at")
-          .eq("role", "user")
-          .order("created_at", { ascending: false })
-          .limit(5),
-        // AI 첨삭 상태별 카운트 - uploaded
-        supabase
-          .from("uploaded_resumes")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "uploaded"),
-        // reviewing
-        supabase
-          .from("uploaded_resumes")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "reviewing"),
-        // reviewed
-        supabase
-          .from("uploaded_resumes")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "reviewed"),
-        // 학년별 분포
-        supabase
-          .from("profiles")
-          .select("grade")
-          .eq("role", "user")
-          .not("grade", "is", null),
-      ]);
-
-      // 통계 세팅
-      setTotalStudents(totalStudentsRes.count ?? 0);
-      setNewStudentsThisWeek(newStudentsRes.count ?? 0);
-
-      // 활성 학생 (unique user_id)
-      if (activeStudentsRes.data) {
-        const uniqueUsers = new Set(activeStudentsRes.data.map((d: { user_id: string }) => d.user_id));
-        setActiveStudents(uniqueUsers.size);
-      }
-
-      setTotalDocs((resumeCountRes.count ?? 0) + (coverLetterCountRes.count ?? 0));
-      setReviewedDocs(reviewedDocsRes.count ?? 0);
-      setMonthlyCounseling(monthlyCounselingRes.count ?? 0);
-      setInProgressCounseling(inProgressCounselingRes.count ?? 0);
-
-      // 최근 가입 학생
-      if (recentStudentsRes.data) {
-        setRecentStudents(recentStudentsRes.data as RecentStudent[]);
-      }
-
-      // AI 첨삭 상태별 (이력서 + 자소서 합산)
-      const [uploadedCLRes, reviewingCLRes, reviewedCLRes] = await Promise.all([
-        supabase.from("uploaded_cover_letters").select("id", { count: "exact", head: true }).eq("status", "uploaded"),
-        supabase.from("uploaded_cover_letters").select("id", { count: "exact", head: true }).eq("status", "reviewing"),
-        supabase.from("uploaded_cover_letters").select("id", { count: "exact", head: true }).eq("status", "reviewed"),
-      ]);
-
-      setReviewStatusCounts({
-        uploaded: (uploadedStatusRes.count ?? 0) + (uploadedCLRes.count ?? 0),
-        reviewing: (reviewingStatusRes.count ?? 0) + (reviewingCLRes.count ?? 0),
-        reviewed: (reviewedStatusRes.count ?? 0) + (reviewedCLRes.count ?? 0),
-      });
-
-      // 최근 첨삭 완료 3건
-      const { data: recentReviewsData } = await supabase
-        .from("ai_review_results")
-        .select("id, user_id, document_type, overall_score, reviewed_at")
-        .order("reviewed_at", { ascending: false })
-        .limit(3);
-
-      if (recentReviewsData && recentReviewsData.length > 0) {
-        const userIds = Array.from(new Set(recentReviewsData.map((r: { user_id: string }) => r.user_id)));
-        const { data: names } = await supabase
-          .from("profiles")
-          .select("id, name")
-          .in("id", userIds);
-        const nameMap = new Map((names || []).map((n: { id: string; name: string }) => [n.id, n.name]));
-
-        setRecentReviews(
-          recentReviewsData.map((r: { id: string; user_id: string; document_type: "resume" | "cover_letter"; overall_score: number | null; reviewed_at: string }) => ({
-            ...r,
-            student_name: nameMap.get(r.user_id) || "알 수 없음",
-          }))
-        );
-      }
-
-      // 학년별 분포
-      if (gradeRes.data) {
-        const gradeCounts: Record<number, number> = {};
-        gradeRes.data.forEach((d: { grade: number | null }) => {
-          if (d.grade) {
-            gradeCounts[d.grade] = (gradeCounts[d.grade] || 0) + 1;
-          }
-        });
-        const dist: GradeDistribution[] = [1, 2, 3].map((g) => ({
-          name: `${g}학년`,
-          value: gradeCounts[g] || 0,
-          grade: g,
-        }));
-        setGradeDistribution(dist);
-      }
-
-      // 주간 활동 추이 (최근 4주)
-      const fourWeeksAgo = format(subWeeks(today, 4), "yyyy-MM-dd");
-      const { data: weeklyLogs } = await supabase
-        .from("daily_logs")
-        .select("user_id, log_date")
-        .gte("log_date", fourWeeksAgo);
-
-      if (weeklyLogs) {
-        const weekMap = new Map<string, Set<string>>();
-        for (let i = 3; i >= 0; i--) {
-          const ws = startOfWeek(subWeeks(today, i), { weekStartsOn: 1 });
-          const we = endOfWeek(subWeeks(today, i), { weekStartsOn: 1 });
-          const weekLabel = `${format(ws, "M/d")}~${format(we, "M/d")}`;
-          weekMap.set(weekLabel, new Set());
-        }
-
-        weeklyLogs.forEach((log: { user_id: string; log_date: string }) => {
-          const logDate = new Date(log.log_date);
-          for (let i = 3; i >= 0; i--) {
-            const ws = startOfWeek(subWeeks(today, i), { weekStartsOn: 1 });
-            const we = endOfWeek(subWeeks(today, i), { weekStartsOn: 1 });
-            if (logDate >= ws && logDate <= we) {
-              const weekLabel = `${format(ws, "M/d")}~${format(we, "M/d")}`;
-              weekMap.get(weekLabel)?.add(log.user_id);
-              break;
-            }
-          }
-        });
-
-        const activity: WeeklyActivity[] = [];
-        weekMap.forEach((users, week) => {
-          activity.push({ week, count: users.size });
-        });
-        setWeeklyActivity(activity);
-      }
-
-      // 다가오는 상담 일정
-      const { data: upcomingData } = await supabase
-        .from("counseling_records")
-        .select("id, title, counseling_type, next_counseling_date, user_id")
-        .gt("next_counseling_date", todayStr)
-        .order("next_counseling_date", { ascending: true })
-        .limit(5);
-
-      if (upcomingData && upcomingData.length > 0) {
-        const userIds = Array.from(new Set(upcomingData.map((c: { user_id: string }) => c.user_id)));
-        const { data: names } = await supabase
-          .from("profiles")
-          .select("id, name")
-          .in("id", userIds);
-        const nameMap = new Map((names || []).map((n: { id: string; name: string }) => [n.id, n.name]));
-
-        setUpcomingCounseling(
-          upcomingData.map((c: { id: string; title: string; counseling_type: string; next_counseling_date: string; user_id: string }) => ({
-            id: c.id,
-            title: c.title,
-            counseling_type: c.counseling_type,
-            next_counseling_date: c.next_counseling_date,
-            student_name: nameMap.get(c.user_id) || "알 수 없음",
-          }))
-        );
-      }
-    } catch {
-      toast.error("대시보드 데이터를 불러오는 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase]);
+  const [scoreDistribution, setScoreDistribution] = useState<ScoreDistribution[]>([]);
 
   useEffect(() => {
     fetchDashboard();
-  }, [fetchDashboard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const totalGradeStudents = gradeDistribution.reduce((s, d) => s + d.value, 0);
-  const activePercent = totalStudents > 0 ? Math.round((activeStudents / totalStudents) * 100) : 0;
+  async function fetchDashboard() {
+    try {
+      setLoading(true);
+      const now = new Date();
+      const monthStart = startOfMonth(now).toISOString();
+
+      // --- Parallel queries for stats ---
+      const [
+        instructorsRes,
+        studentsRes,
+        monthlyReviewsRes,
+        monthlyReviewScoresRes,
+        monthlyEmailsSentRes,
+        monthlyEmailsFailedRes,
+        newInstructorsRes,
+        newStudentsRes,
+        allProfilesRes,
+        allReviewScoresRes,
+      ] = await Promise.all([
+        // All instructors
+        supabase
+          .from("profiles")
+          .select("id, is_active", { count: "exact" })
+          .eq("role", "instructor"),
+        // All students
+        supabase
+          .from("profiles")
+          .select("id, education_level", { count: "exact" })
+          .eq("role", "student"),
+        // Monthly AI reviews count
+        supabase
+          .from("ai_review_results")
+          .select("id", { count: "exact", head: true })
+          .gte("reviewed_at", monthStart),
+        // Monthly AI review scores (for average)
+        supabase
+          .from("ai_review_results")
+          .select("overall_score")
+          .gte("reviewed_at", monthStart)
+          .not("overall_score", "is", null),
+        // Monthly emails sent
+        supabase
+          .from("email_logs")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", monthStart)
+          .eq("status", "sent"),
+        // Monthly emails failed
+        supabase
+          .from("email_logs")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", monthStart)
+          .eq("status", "failed"),
+        // New instructors this month
+        supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("role", "instructor")
+          .gte("created_at", monthStart),
+        // New students this month
+        supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("role", "student")
+          .gte("created_at", monthStart),
+        // All profiles for trend chart (last 6 months)
+        supabase
+          .from("profiles")
+          .select("role, created_at")
+          .in("role", ["instructor", "student"])
+          .gte("created_at", subMonths(now, 6).toISOString()),
+        // All AI review scores for distribution
+        supabase
+          .from("ai_review_results")
+          .select("overall_score")
+          .not("overall_score", "is", null),
+      ]);
+
+      // --- Process stats ---
+      const activeInstructors = instructorsRes.data?.filter((i) => i.is_active).length ?? 0;
+      const totalInstructors = instructorsRes.count ?? 0;
+
+      const highSchoolStudents = studentsRes.data?.filter((s) => s.education_level === "high_school").length ?? 0;
+      const universityStudents = studentsRes.data?.filter((s) => s.education_level === "university").length ?? 0;
+
+      const scores = monthlyReviewScoresRes.data?.map((r) => r.overall_score as number) ?? [];
+      const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+      setStats({
+        totalInstructors,
+        activeInstructors,
+        inactiveInstructors: totalInstructors - activeInstructors,
+        totalStudents: studentsRes.count ?? 0,
+        highSchoolStudents,
+        universityStudents,
+        monthlyAiReviews: monthlyReviewsRes.count ?? 0,
+        avgAiScore: avgScore,
+        monthlyEmails: monthlyEmailsSentRes.count ?? 0,
+        failedEmails: monthlyEmailsFailedRes.count ?? 0,
+        newInstructorsThisMonth: newInstructorsRes.count ?? 0,
+        newStudentsThisMonth: newStudentsRes.count ?? 0,
+      });
+
+      // --- Monthly signup trend (last 6 months) ---
+      if (allProfilesRes.data) {
+        const trendMap = new Map<string, { instructors: number; students: number }>();
+        for (let i = 5; i >= 0; i--) {
+          const d = subMonths(now, i);
+          const key = format(d, "yyyy-MM");
+          trendMap.set(key, { instructors: 0, students: 0 });
+        }
+        allProfilesRes.data.forEach((p) => {
+          const key = p.created_at.slice(0, 7); // "yyyy-MM"
+          const entry = trendMap.get(key);
+          if (entry) {
+            if (p.role === "instructor") entry.instructors++;
+            else if (p.role === "student") entry.students++;
+          }
+        });
+        const trend: MonthlyTrend[] = [];
+        trendMap.forEach((val, key) => {
+          trend.push({
+            month: format(new Date(key + "-01"), "M월", { locale: ko }),
+            instructors: val.instructors,
+            students: val.students,
+          });
+        });
+        setMonthlyTrend(trend);
+      }
+
+      // --- Top 10 instructors by student count ---
+      if (instructorsRes.data && studentsRes.data) {
+        // Fetch instructor names/schools
+        const instructorIds = instructorsRes.data.map((i) => i.id);
+        const { data: instructorProfiles } = await supabase
+          .from("profiles")
+          .select("id, name, school")
+          .in("id", instructorIds);
+
+        // Fetch all students with instructor_id
+        const { data: allStudents } = await supabase
+          .from("profiles")
+          .select("instructor_id")
+          .eq("role", "student")
+          .not("instructor_id", "is", null);
+
+        const countMap = new Map<string, number>();
+        allStudents?.forEach((s) => {
+          if (s.instructor_id) {
+            countMap.set(s.instructor_id, (countMap.get(s.instructor_id) || 0) + 1);
+          }
+        });
+
+        const ranked: InstructorStudentCount[] = (instructorProfiles || [])
+          .map((ip) => ({
+            id: ip.id,
+            name: ip.name,
+            school: ip.school,
+            studentCount: countMap.get(ip.id) || 0,
+          }))
+          .sort((a, b) => b.studentCount - a.studentCount)
+          .slice(0, 10);
+
+        setTopInstructors(ranked);
+
+        // --- Recent 5 instructors ---
+        const { data: recentInst } = await supabase
+          .from("profiles")
+          .select("id, name, email, school, gemini_api_key, created_at")
+          .eq("role", "instructor")
+          .order("created_at", { ascending: false })
+          .limit(5);
+
+        if (recentInst) {
+          setRecentInstructors(
+            recentInst.map((ri) => ({
+              id: ri.id,
+              name: ri.name,
+              email: ri.email,
+              school: ri.school,
+              studentCount: countMap.get(ri.id) || 0,
+              hasApiKey: !!ri.gemini_api_key,
+              created_at: ri.created_at,
+            }))
+          );
+        }
+      }
+
+      // --- Recent 5 students with instructor name ---
+      const { data: recentStud } = await supabase
+        .from("profiles")
+        .select("id, name, school, education_level, instructor_id, created_at")
+        .eq("role", "student")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (recentStud) {
+        const instructorIds = Array.from(
+          new Set(recentStud.map((s) => s.instructor_id).filter(Boolean))
+        );
+        let nameMap = new Map<string, string>();
+        if (instructorIds.length > 0) {
+          const { data: instNames } = await supabase
+            .from("profiles")
+            .select("id, name")
+            .in("id", instructorIds);
+          if (instNames) {
+            nameMap = new Map(instNames.map((n) => [n.id, n.name]));
+          }
+        }
+        setRecentStudents(
+          recentStud.map((s) => ({
+            id: s.id,
+            name: s.name,
+            school: s.school,
+            education_level: s.education_level,
+            instructor_name: s.instructor_id ? nameMap.get(s.instructor_id) || null : null,
+            created_at: s.created_at,
+          }))
+        );
+      }
+
+      // --- AI Score Distribution ---
+      if (allReviewScoresRes.data) {
+        const ranges = [
+          { range: "0-20", min: 0, max: 20, color: SCORE_COLORS[0] },
+          { range: "21-40", min: 21, max: 40, color: SCORE_COLORS[1] },
+          { range: "41-60", min: 41, max: 60, color: SCORE_COLORS[2] },
+          { range: "61-80", min: 61, max: 80, color: SCORE_COLORS[3] },
+          { range: "81-100", min: 81, max: 100, color: SCORE_COLORS[4] },
+        ];
+        const dist: ScoreDistribution[] = ranges.map((r) => ({
+          range: r.range,
+          count: allReviewScoresRes.data!.filter(
+            (d) => (d.overall_score as number) >= r.min && (d.overall_score as number) <= r.max
+          ).length,
+          color: r.color,
+        }));
+        setScoreDistribution(dist);
+      }
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // --- Stat card helper ---
+  const statCards = [
+    {
+      label: "전체 강사 수",
+      value: stats.totalInstructors,
+      sub: `활성 ${stats.activeInstructors}명 · 비활성 ${stats.inactiveInstructors}명`,
+      icon: UserCog,
+      iconBg: "bg-red-100",
+      iconColor: "text-red-600",
+    },
+    {
+      label: "전체 학생 수",
+      value: stats.totalStudents,
+      sub: `특성화고 ${stats.highSchoolStudents}명 · 대학생 ${stats.universityStudents}명`,
+      icon: Users,
+      iconBg: "bg-blue-100",
+      iconColor: "text-blue-600",
+    },
+    {
+      label: "이번 달 AI 첨삭",
+      value: stats.monthlyAiReviews,
+      sub: `평균 ${stats.avgAiScore}점`,
+      icon: Sparkles,
+      iconBg: "bg-purple-100",
+      iconColor: "text-purple-600",
+    },
+    {
+      label: "이번 달 이메일",
+      value: stats.monthlyEmails,
+      sub: `실패 ${stats.failedEmails}건`,
+      icon: Mail,
+      iconBg: "bg-green-100",
+      iconColor: "text-green-600",
+    },
+    {
+      label: "이번 달 신규 강사",
+      value: stats.newInstructorsThisMonth,
+      sub: "",
+      icon: UserPlus,
+      iconBg: "bg-orange-100",
+      iconColor: "text-orange-600",
+    },
+    {
+      label: "이번 달 신규 학생",
+      value: stats.newStudentsThisMonth,
+      sub: "",
+      icon: UserPlus,
+      iconBg: "bg-cyan-100",
+      iconColor: "text-cyan-600",
+    },
+  ];
 
   if (loading) {
-    return <DashboardSkeleton />;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-red-500" />
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-8">
-      {/* 4-1. 인사 섹션 */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-          안녕하세요, {profile?.name || "관리자"} 선생님 👋
-        </h2>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
-          오늘의 학생 현황을 확인하세요
-        </p>
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">관리자 대시보드</h1>
+        <p className="text-sm text-gray-500 mt-1">플랫폼 전체 현황을 확인하세요</p>
       </div>
 
-      {/* 4-2. 통계 카드 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={Users}
-          iconBg="bg-purple-100 dark:bg-purple-900/40"
-          iconColor="text-purple-600 dark:text-purple-400"
-          value={totalStudents}
-          label="전체 학생"
-          sub={newStudentsThisWeek > 0 ? `+${newStudentsThisWeek}명` : undefined}
-          subColor="text-green-500"
-        />
-        <StatCard
-          icon={UserCheck}
-          iconBg="bg-green-100 dark:bg-green-900/40"
-          iconColor="text-green-600 dark:text-green-400"
-          value={activeStudents}
-          label="이번 주 활성"
-          sub={`${activePercent}%`}
-          subColor="text-gray-500"
-        />
-        <StatCard
-          icon={FileText}
-          iconBg="bg-blue-100 dark:bg-blue-900/40"
-          iconColor="text-blue-600 dark:text-blue-400"
-          value={totalDocs}
-          label="업로드 문서"
-          sub={`${reviewedDocs}건 첨삭완료`}
-          subColor="text-gray-500"
-        />
-        <StatCard
-          icon={MessageSquareHeart}
-          iconBg="bg-orange-100 dark:bg-orange-900/40"
-          iconColor="text-orange-600 dark:text-orange-400"
-          value={monthlyCounseling}
-          label="이번 달 상담"
-          sub={`${inProgressCounseling}건 진행중`}
-          subColor="text-gray-500"
-        />
-      </div>
-
-      {/* 4-3. 차트 영역 */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* 주간 학생 활동 추이 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            주간 학생 활동 추이
-          </h3>
-          {weeklyActivity.length > 0 ? (
-            <div className="w-full h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={weeklyActivity}>
-                  <XAxis
-                    dataKey="week"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 11, fill: "#9CA3AF" }}
-                  />
-                  <YAxis hide />
-                  <Tooltip
-                    formatter={(value) => [`${value}명`, "활성 학생"]}
-                    contentStyle={{
-                      borderRadius: "8px",
-                      border: "1px solid #E5E7EB",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#8B5CF6"
-                    fill="#EDE9FE"
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="h-56 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
-              활동 데이터가 없습니다
-            </div>
-          )}
-        </div>
-
-        {/* 학년별 학생 분포 */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            학년별 학생 분포
-          </h3>
-          {totalGradeStudents > 0 ? (
-            <>
-              <div className="w-full h-44 relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={gradeDistribution}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={70}
-                      dataKey="value"
-                      startAngle={90}
-                      endAngle={-270}
-                      strokeWidth={0}
-                    >
-                      {gradeDistribution.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => [`${value}명`]}
-                      contentStyle={{
-                        borderRadius: "8px",
-                        border: "1px solid #E5E7EB",
-                        fontSize: "12px",
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                      {totalGradeStudents}
-                    </p>
-                    <p className="text-xs text-gray-500">총 학생</p>
-                  </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        {statCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.label}
+              className="bg-white rounded-xl shadow-sm border border-gray-100 p-5"
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`p-2.5 rounded-lg ${card.iconBg}`}>
+                  <Icon className={`w-5 h-5 ${card.iconColor}`} />
                 </div>
+                <span className="text-sm text-gray-500 font-medium">{card.label}</span>
               </div>
-              <div className="flex justify-center gap-4 mt-2">
-                {gradeDistribution.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-                    <span
-                      className="w-3 h-3 rounded-full inline-block"
-                      style={{ backgroundColor: PIE_COLORS[i] }}
-                    />
-                    {d.name} ({d.value}명)
-                  </div>
-                ))}
-              </div>
-            </>
+              <p className="text-2xl font-bold text-gray-900">
+                {card.value.toLocaleString()}
+                <span className="text-base font-normal text-gray-400 ml-1">
+                  {card.label.includes("이메일") ? "건" : "명"}
+                </span>
+              </p>
+              {card.sub && (
+                <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid lg:grid-cols-2 gap-6 mb-8">
+        {/* Monthly Signup Trend */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">월별 가입 추이</h2>
+          {monthlyTrend.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={monthlyTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month" fontSize={12} tick={{ fill: "#6b7280" }} />
+                <YAxis fontSize={12} tick={{ fill: "#6b7280" }} allowDecimals={false} />
+                <Tooltip
+                  formatter={(value, name) => [
+                    `${value}명`,
+                    name === "instructors" ? "강사" : "학생",
+                  ]}
+                />
+                <Legend
+                  formatter={(value) =>
+                    value === "instructors" ? "강사" : "학생"
+                  }
+                />
+                <Line
+                  type="monotone"
+                  dataKey="instructors"
+                  stroke="#EF4444"
+                  strokeWidth={2}
+                  dot={{ r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="students"
+                  stroke="#3B82F6"
+                  strokeWidth={2}
+                  dot={{ r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           ) : (
-            <div className="h-56 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
-              학년 데이터가 없습니다
+            <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">
+              데이터가 없습니다
+            </div>
+          )}
+        </div>
+
+        {/* Top 10 Instructors by Student Count */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            강사별 학생 수 TOP 10
+          </h2>
+          {topInstructors.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart
+                data={topInstructors}
+                layout="vertical"
+                margin={{ left: 20, right: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis type="number" fontSize={12} tick={{ fill: "#6b7280" }} allowDecimals={false} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  fontSize={12}
+                  tick={{ fill: "#6b7280" }}
+                  width={80}
+                />
+                <Tooltip
+                  formatter={(value) => [`${value}명`, "학생 수"]}
+                />
+                <Bar dataKey="studentCount" fill="#F87171" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">
+              데이터가 없습니다
             </div>
           )}
         </div>
       </div>
 
-      {/* 4-4. 최근 가입 학생 */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+      {/* Recent Instructors Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            최근 가입 학생
-          </h3>
+          <h2 className="text-lg font-semibold text-gray-900">최근 가입 강사</h2>
           <Link
-            href="/admin/students"
-            className="text-sm text-purple-600 dark:text-purple-400 font-medium hover:underline flex items-center gap-1"
+            href="/admin/instructors"
+            className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
           >
-            전체보기
-            <ArrowRight className="w-4 h-4" />
+            전체보기 <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
-        {recentStudents.length > 0 ? (
+        {recentInstructors.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-700">
-                  <th className="text-left py-2 text-gray-500 dark:text-gray-400 font-medium">이름</th>
-                  <th className="text-left py-2 text-gray-500 dark:text-gray-400 font-medium">학교</th>
-                  <th className="text-left py-2 text-gray-500 dark:text-gray-400 font-medium hidden sm:table-cell">학과</th>
-                  <th className="text-left py-2 text-gray-500 dark:text-gray-400 font-medium hidden sm:table-cell">학년</th>
-                  <th className="text-left py-2 text-gray-500 dark:text-gray-400 font-medium">가입일</th>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">이름</th>
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">이메일</th>
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">소속</th>
+                  <th className="text-center py-3 px-3 text-gray-500 font-medium">학생 수</th>
+                  <th className="text-center py-3 px-3 text-gray-500 font-medium">API 키</th>
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">가입일</th>
                 </tr>
               </thead>
               <tbody>
-                {recentStudents.map((student) => (
-                  <tr
-                    key={student.id}
-                    onClick={() => window.location.href = `/admin/students/${student.id}`}
-                    className="border-b border-gray-50 dark:border-gray-700/50 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 cursor-pointer transition-colors"
-                  >
-                    <td className="py-3 text-gray-900 dark:text-gray-100 font-medium">
-                      {student.name}
+                {recentInstructors.map((inst) => (
+                  <tr key={inst.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="py-3 px-3 font-medium text-gray-900">{inst.name}</td>
+                    <td className="py-3 px-3 text-gray-500">{inst.email || "-"}</td>
+                    <td className="py-3 px-3 text-gray-500">{inst.school || "-"}</td>
+                    <td className="py-3 px-3 text-center text-gray-700">{inst.studentCount}명</td>
+                    <td className="py-3 px-3 text-center">
+                      {inst.hasApiKey ? (
+                        <span className="text-green-600">&#10003;</span>
+                      ) : (
+                        <span className="text-red-400">&#10007;</span>
+                      )}
                     </td>
-                    <td className="py-3 text-gray-600 dark:text-gray-400">
-                      {student.school || "-"}
-                    </td>
-                    <td className="py-3 text-gray-600 dark:text-gray-400 hidden sm:table-cell">
-                      {student.department || "-"}
-                    </td>
-                    <td className="py-3 text-gray-600 dark:text-gray-400 hidden sm:table-cell">
-                      {student.grade ? `${student.grade}학년` : "-"}
-                    </td>
-                    <td className="py-3 text-gray-500 dark:text-gray-400">
-                      {format(new Date(student.created_at), "yy.MM.dd")}
+                    <td className="py-3 px-3 text-gray-500">
+                      {format(new Date(inst.created_at), "yyyy.MM.dd", { locale: ko })}
                     </td>
                   </tr>
                 ))}
@@ -594,213 +587,87 @@ export default function AdminDashboardPage() {
             </table>
           </div>
         ) : (
-          <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
-            아직 가입한 학생이 없습니다
-          </div>
+          <p className="text-sm text-gray-400 text-center py-8">등록된 강사가 없습니다</p>
         )}
       </div>
 
-      {/* 4-5. AI 첨삭 현황 */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+      {/* Recent Students Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            AI 첨삭 현황
-          </h3>
+          <h2 className="text-lg font-semibold text-gray-900">최근 등록 학생</h2>
           <Link
-            href="/admin/ai-center"
-            className="text-sm text-purple-600 dark:text-purple-400 font-medium hover:underline flex items-center gap-1"
+            href="/admin/students"
+            className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
           >
-            AI 분석센터
-            <ArrowRight className="w-4 h-4" />
+            전체보기 <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
-
-        {/* 상태 카운트 */}
-        <div className="flex gap-4 mb-4">
-          <div className="flex-1 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-center">
-            <p className="text-xl font-bold text-yellow-700 dark:text-yellow-400">
-              {reviewStatusCounts.uploaded}
-            </p>
-            <p className="text-xs text-yellow-600 dark:text-yellow-500">대기중</p>
-          </div>
-          <div className="flex-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-center">
-            <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
-              {reviewStatusCounts.reviewing}
-            </p>
-            <p className="text-xs text-blue-600 dark:text-blue-500">진행중</p>
-          </div>
-          <div className="flex-1 rounded-lg bg-green-50 dark:bg-green-900/20 px-4 py-3 text-center">
-            <p className="text-xl font-bold text-green-700 dark:text-green-400">
-              {reviewStatusCounts.reviewed}
-            </p>
-            <p className="text-xs text-green-600 dark:text-green-500">완료</p>
-          </div>
-        </div>
-
-        {/* 최근 첨삭 완료 리스트 */}
-        {recentReviews.length > 0 ? (
-          <div className="space-y-2">
-            {recentReviews.map((review) => (
-              <div
-                key={review.id}
-                className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {review.student_name}
-                  </span>
-                  <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full px-2 py-0.5">
-                    {review.document_type === "resume" ? "이력서" : "자소서"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {review.overall_score !== null && (
-                    <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">
-                      {review.overall_score}점
-                    </span>
-                  )}
-                  <span className="text-xs text-gray-400">
-                    {format(new Date(review.reviewed_at), "MM.dd")}
-                  </span>
-                </div>
-              </div>
-            ))}
+        {recentStudents.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">이름</th>
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">학교</th>
+                  <th className="text-center py-3 px-3 text-gray-500 font-medium">학교급</th>
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">담당 강사</th>
+                  <th className="text-left py-3 px-3 text-gray-500 font-medium">등록일</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentStudents.map((stu) => (
+                  <tr key={stu.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="py-3 px-3 font-medium text-gray-900">{stu.name}</td>
+                    <td className="py-3 px-3 text-gray-500">{stu.school || "-"}</td>
+                    <td className="py-3 px-3 text-center">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                          stu.education_level === "high_school"
+                            ? "bg-orange-100 text-orange-700"
+                            : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {stu.education_level === "high_school" ? "특성화고" : "대학생"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-gray-500">{stu.instructor_name || "-"}</td>
+                    <td className="py-3 px-3 text-gray-500">
+                      {format(new Date(stu.created_at), "yyyy.MM.dd", { locale: ko })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <div className="text-center py-6 text-gray-400 dark:text-gray-500 text-sm">
-            아직 AI 첨삭 기록이 없습니다
-          </div>
+          <p className="text-sm text-gray-400 text-center py-8">등록된 학생이 없습니다</p>
         )}
       </div>
 
-      {/* 4-6. 다가오는 상담 일정 */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            다가오는 상담 일정
-          </h3>
-          <Link
-            href="/admin/counseling"
-            className="text-sm text-purple-600 dark:text-purple-400 font-medium hover:underline flex items-center gap-1"
-          >
-            상담도우미
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {upcomingCounseling.length > 0 ? (
-          <div className="space-y-3">
-            {upcomingCounseling.map((c) => {
-              const badge = COUNSELING_TYPE_BADGE[c.counseling_type] || COUNSELING_TYPE_BADGE.other;
-              return (
-                <div
-                  key={c.id}
-                  className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0"
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-shrink-0">
-                      {c.student_name}
-                    </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${badge.cls}`}>
-                      {badge.label}
-                    </span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                      {c.title}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
-                    {format(new Date(c.next_counseling_date), "M/d(EEE)", { locale: ko })}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+      {/* AI Score Distribution Chart */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">AI 첨삭 점수 분포</h2>
+        {scoreDistribution.some((d) => d.count > 0) ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={scoreDistribution}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="range" fontSize={12} tick={{ fill: "#6b7280" }} />
+              <YAxis fontSize={12} tick={{ fill: "#6b7280" }} allowDecimals={false} />
+              <Tooltip
+                formatter={(value) => [`${value}건`, "건수"]}
+              />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {scoreDistribution.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         ) : (
-          <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
-            예정된 상담이 없습니다
+          <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
+            첨삭 데이터가 없습니다
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-// === 통계 카드 컴포넌트 ===
-function StatCard({
-  icon: Icon,
-  iconBg,
-  iconColor,
-  value,
-  label,
-  sub,
-  subColor,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  iconBg: string;
-  iconColor: string;
-  value: number;
-  label: string;
-  sub?: string;
-  subColor?: string;
-}) {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
-      <div className="flex items-center gap-4">
-        <div
-          className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0`}
-        >
-          <Icon className={`w-5 h-5 ${iconColor}`} />
-        </div>
-        <div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-          {sub && (
-            <p className={`text-xs mt-0.5 ${subColor || "text-gray-500"}`}>{sub}</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// === 스켈레톤 ===
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-8 animate-pulse">
-      {/* 인사 */}
-      <div>
-        <div className="h-8 w-64 bg-gray-200 dark:bg-gray-700 rounded" />
-        <div className="h-4 w-48 bg-gray-200 dark:bg-gray-700 rounded mt-2" />
-      </div>
-      {/* 통계 카드 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5">
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-gray-200 dark:bg-gray-700" />
-              <div>
-                <div className="h-7 w-12 bg-gray-200 dark:bg-gray-700 rounded" />
-                <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded mt-1" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      {/* 차트 */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {[...Array(2)].map((_, i) => (
-          <div key={i} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-            <div className="h-5 w-40 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
-            <div className="h-56 bg-gray-100 dark:bg-gray-700 rounded" />
-          </div>
-        ))}
-      </div>
-      {/* 테이블 */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-        <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-10 bg-gray-100 dark:bg-gray-700 rounded mb-2" />
-        ))}
       </div>
     </div>
   );

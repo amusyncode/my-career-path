@@ -13,23 +13,67 @@ import {
   Shield,
   Eye,
   EyeOff,
-  ExternalLink,
+  Database,
+  BarChart3,
+  Info,
   Users,
+  FileText,
+  Sparkles,
+  MessageSquareHeart,
+  Mail,
+  FileEdit,
+  Save,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
 
+interface PlatformStats {
+  totalInstructors: number;
+  totalStudents: number;
+  totalAIReviews: number;
+  totalEmails: number;
+  totalResumes: number;
+  totalCoverLetters: number;
+  totalCounseling: number;
+  totalGems: number;
+}
+
 export default function SettingsPage() {
+  const supabase = createClient();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
-  const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
+
+  // Instructor signup code
   const [copied, setCopied] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-  const [studentCount, setStudentCount] = useState(0);
-  const supabase = createClient();
+  const instructorCode = process.env.NEXT_PUBLIC_INSTRUCTOR_SIGNUP_CODE || "미설정";
+
+  // Supabase connection
+  const [connectionStatus, setConnectionStatus] = useState<
+    "idle" | "testing" | "connected" | "error"
+  >("idle");
+
+  // Platform stats
+  const [stats, setStats] = useState<PlatformStats>({
+    totalInstructors: 0,
+    totalStudents: 0,
+    totalAIReviews: 0,
+    totalEmails: 0,
+    totalResumes: 0,
+    totalCoverLetters: 0,
+    totalCounseling: 0,
+    totalGems: 0,
+  });
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  // Profile edit
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Password change
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     const {
@@ -46,301 +90,433 @@ export default function SettingsPage() {
     if (data) {
       const p = data as Profile;
       setProfile(p);
-      setApiKey(p.gemini_api_key || "");
-      if (p.gemini_api_key) setApiKeyValid(true);
-
-      // 소속 학생 수
-      if (p.role === "instructor") {
-        const { count } = await supabase
-          .from("profiles")
-          .select("*", { count: "exact", head: true })
-          .eq("instructor_id", p.id)
-          .eq("role", "student");
-        setStudentCount(count || 0);
-      }
+      setEditName(p.name || "");
+      setEditEmail(p.email || "");
     }
     setLoading(false);
   }, [supabase]);
 
+  const fetchStats = useCallback(async () => {
+    setLoadingStats(true);
+    try {
+      const [
+        instructorsRes,
+        studentsRes,
+        reviewsRes,
+        emailsRes,
+        resumesRes,
+        coverLettersRes,
+        counselingRes,
+        gemsRes,
+      ] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "instructor"),
+        supabase
+          .from("profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "student"),
+        supabase
+          .from("ai_review_results")
+          .select("*", { count: "exact", head: true }),
+        supabase
+          .from("email_logs")
+          .select("*", { count: "exact", head: true }),
+        supabase
+          .from("uploaded_resumes")
+          .select("*", { count: "exact", head: true }),
+        supabase
+          .from("uploaded_cover_letters")
+          .select("*", { count: "exact", head: true }),
+        supabase
+          .from("counseling_records")
+          .select("*", { count: "exact", head: true }),
+        supabase.from("gems").select("*", { count: "exact", head: true }),
+      ]);
+
+      setStats({
+        totalInstructors: instructorsRes.count ?? 0,
+        totalStudents: studentsRes.count ?? 0,
+        totalAIReviews: reviewsRes.count ?? 0,
+        totalEmails: emailsRes.count ?? 0,
+        totalResumes: resumesRes.count ?? 0,
+        totalCoverLetters: coverLettersRes.count ?? 0,
+        totalCounseling: counselingRes.count ?? 0,
+        totalGems: gemsRes.count ?? 0,
+      });
+    } catch (err) {
+      console.error("통계 조회 실패:", err);
+    }
+    setLoadingStats(false);
+  }, [supabase]);
+
   useEffect(() => {
     fetchProfile();
-  }, [fetchProfile]);
+    fetchStats();
+  }, [fetchProfile, fetchStats]);
 
-  const validateApiKey = async () => {
-    if (!apiKey.trim()) {
-      toast.error("API 키를 입력해주세요.");
-      return;
-    }
-    setIsValidating(true);
+  const testConnection = async () => {
+    setConnectionStatus("testing");
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`
-      );
-      if (res.ok) {
-        setApiKeyValid(true);
-        toast.success("API 키가 유효합니다!");
+      const { error } = await supabase.from("profiles").select("id").limit(1);
+      if (error) {
+        setConnectionStatus("error");
+        toast.error("Supabase 연결 실패");
       } else {
-        setApiKeyValid(false);
-        toast.error("유효하지 않은 API 키입니다.");
+        setConnectionStatus("connected");
+        toast.success("Supabase 연결 성공");
       }
     } catch {
-      setApiKeyValid(false);
-      toast.error("검증 중 오류가 발생했습니다.");
+      setConnectionStatus("error");
+      toast.error("연결 테스트 중 오류 발생");
     }
-    setIsValidating(false);
   };
 
-  const saveApiKey = async () => {
-    if (!apiKeyValid) {
-      toast.error("먼저 API 키를 검증해주세요.");
+  const copyCode = () => {
+    navigator.clipboard.writeText(instructorCode);
+    setCopied(true);
+    toast.success("코드가 복사되었습니다!");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      toast.error("이름을 입력해주세요.");
       return;
     }
     setSaving(true);
     const { error } = await supabase
       .from("profiles")
-      .update({ gemini_api_key: apiKey.trim() })
+      .update({ name: editName.trim() })
       .eq("id", profile?.id);
 
     if (error) {
       toast.error("저장 실패: " + error.message);
     } else {
-      toast.success("API 키가 저장되었습니다.");
+      toast.success("프로필이 저장되었습니다.");
+      fetchProfile();
     }
     setSaving(false);
   };
 
-  const copyInviteCode = () => {
-    if (profile?.invite_code) {
-      navigator.clipboard.writeText(profile.invite_code);
-      setCopied(true);
-      toast.success("초대코드가 복사되었습니다!");
-      setTimeout(() => setCopied(false), 2000);
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      toast.error("비밀번호는 6자 이상이어야 합니다.");
+      return;
     }
-  };
-
-  const regenerateInviteCode = async () => {
-    if (studentCount > 0) {
-      const confirmed = confirm(
-        `현재 ${studentCount}명의 학생이 등록되어 있습니다.\n코드를 변경하면 새로운 학생만 새 코드로 가입할 수 있습니다.\n계속하시겠습니까?`
-      );
-      if (!confirmed) return;
+    if (newPassword !== confirmPassword) {
+      toast.error("비밀번호가 일치하지 않습니다.");
+      return;
     }
-
-    setRegenerating(true);
-    const newCode = Math.random()
-      .toString(36)
-      .substring(2, 10)
-      .toUpperCase();
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({ invite_code: newCode })
-      .eq("id", profile?.id);
-
+    setChangingPassword(true);
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
     if (error) {
-      toast.error("코드 변경 실패: " + error.message);
+      toast.error("비밀번호 변경 실패: " + error.message);
     } else {
-      setProfile((prev) => (prev ? { ...prev, invite_code: newCode } : prev));
-      toast.success("새 초대코드가 생성되었습니다.");
+      toast.success("비밀번호가 변경되었습니다.");
+      setNewPassword("");
+      setConfirmPassword("");
     }
-    setRegenerating(false);
+    setChangingPassword(false);
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-red-500" />
       </div>
     );
   }
 
   if (!profile) return null;
 
-  const isInstructor = profile.role === "instructor";
+  const statCards = [
+    { label: "총 강사", value: stats.totalInstructors, icon: Users, color: "text-red-600" },
+    { label: "총 학생", value: stats.totalStudents, icon: Users, color: "text-blue-600" },
+    { label: "총 AI 첨삭", value: stats.totalAIReviews, icon: Sparkles, color: "text-purple-600" },
+    { label: "총 이메일", value: stats.totalEmails, icon: Mail, color: "text-green-600" },
+    { label: "총 이력서", value: stats.totalResumes, icon: FileText, color: "text-amber-600" },
+    { label: "총 자소서", value: stats.totalCoverLetters, icon: FileEdit, color: "text-teal-600" },
+    { label: "총 상담", value: stats.totalCounseling, icon: MessageSquareHeart, color: "text-pink-600" },
+    { label: "총 Gem", value: stats.totalGems, icon: Sparkles, color: "text-indigo-600" },
+  ];
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">설정</h1>
-        <p className="text-gray-500 mt-1">계정 및 서비스 설정을 관리합니다</p>
+        <p className="text-gray-500 mt-1">플랫폼 설정 및 시스템 정보</p>
       </div>
 
-      {/* 프로필 정보 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      {/* 1. 강사 가입 코드 */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-            <User className="w-5 h-5 text-purple-600" />
+          <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+            <Key className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h2 className="font-semibold text-gray-900">계정 정보</h2>
-            <p className="text-sm text-gray-500">기본 프로필 정보</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-gray-500">이름</p>
-            <p className="font-medium text-gray-900">{profile.name}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">이메일</p>
-            <p className="font-medium text-gray-900">{profile.email}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">역할</p>
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                profile.role === "super_admin"
-                  ? "bg-red-100 text-red-700"
-                  : "bg-purple-100 text-purple-700"
-              }`}
-            >
-              <Shield className="w-3 h-3" />
-              {profile.role === "super_admin" ? "플랫폼 관리자" : "강사"}
-            </span>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">전화번호</p>
-            <p className="font-medium text-gray-900">
-              {profile.phone || "-"}
+            <h2 className="font-semibold text-gray-900">강사 가입 코드</h2>
+            <p className="text-sm text-gray-500">
+              강사가 회원가입 시 사용하는 인증 코드
             </p>
           </div>
         </div>
+
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-2xl font-mono font-bold text-red-800 tracking-widest">
+            {instructorCode}
+          </span>
+          <button
+            onClick={copyCode}
+            className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+            title="복사"
+          >
+            {copied ? (
+              <Check className="w-5 h-5 text-green-500" />
+            ) : (
+              <Copy className="w-5 h-5 text-red-500" />
+            )}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          이 코드는 환경변수(NEXT_PUBLIC_INSTRUCTOR_SIGNUP_CODE)에서 관리됩니다.
+          변경하려면 Vercel 환경변수를 수정하세요.
+        </p>
       </div>
 
-      {/* 초대코드 (강사 전용) */}
-      {isInstructor && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <Users className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900">학생 초대코드</h2>
-              <p className="text-sm text-gray-500">
-                학생이 회원가입 시 이 코드를 입력하면 연결됩니다 ·{" "}
-                <span className="text-purple-600 font-medium">
-                  {studentCount}명 등록됨
-                </span>
-              </p>
-            </div>
+      {/* 2. 시스템 연결 상태 */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+            <Database className="w-5 h-5 text-blue-600" />
           </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">시스템 연결 상태</h2>
+            <p className="text-sm text-gray-500">외부 서비스 연결 상태</p>
+          </div>
+        </div>
 
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-center justify-between">
-            <span className="text-2xl font-mono font-bold text-purple-800 tracking-widest">
-              {profile.invite_code || "없음"}
+        <div className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">Supabase</span>
+            <span className="text-lg">
+              {connectionStatus === "connected"
+                ? "🟢"
+                : connectionStatus === "error"
+                ? "🔴"
+                : "⚪"}
             </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={copyInviteCode}
-                className="p-2 hover:bg-purple-100 rounded-lg transition-colors"
-                title="복사"
-              >
-                {copied ? (
-                  <Check className="w-5 h-5 text-green-500" />
-                ) : (
-                  <Copy className="w-5 h-5 text-purple-500" />
-                )}
-              </button>
-              <button
-                onClick={regenerateInviteCode}
-                disabled={regenerating}
-                className="p-2 hover:bg-purple-100 rounded-lg transition-colors"
-                title="새 코드 생성"
-              >
-                <RefreshCw
-                  className={`w-5 h-5 text-purple-500 ${regenerating ? "animate-spin" : ""}`}
-                />
-              </button>
-            </div>
+            <span className="text-sm text-gray-500">
+              {connectionStatus === "connected"
+                ? "연결됨"
+                : connectionStatus === "error"
+                ? "연결 실패"
+                : connectionStatus === "testing"
+                ? "테스트 중..."
+                : "미확인"}
+            </span>
+          </div>
+          <button
+            onClick={testConnection}
+            disabled={connectionStatus === "testing"}
+            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+          >
+            {connectionStatus === "testing" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            연결 테스트
+          </button>
+        </div>
+      </div>
+
+      {/* 3. 플랫폼 통계 */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+            <BarChart3 className="w-5 h-5 text-purple-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">플랫폼 통계</h2>
+            <p className="text-sm text-gray-500">전체 플랫폼 사용 현황</p>
           </div>
         </div>
-      )}
 
-      {/* API 키 관리 (강사 전용) */}
-      {isInstructor && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-              <Key className="w-5 h-5 text-amber-600" />
+        {loadingStats ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {statCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <div
+                  key={card.label}
+                  className="bg-gray-50 rounded-lg p-4"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon className={`w-4 h-4 ${card.color}`} />
+                    <span className="text-xs text-gray-500">{card.label}</span>
+                  </div>
+                  <p className={`text-xl font-bold ${card.color}`}>
+                    {card.value.toLocaleString()}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 4. 관리자 프로필 */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+            <User className="w-5 h-5 text-green-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">관리자 프로필</h2>
+            <p className="text-sm text-gray-500">계정 정보 및 비밀번호 관리</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {/* Name & Email */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                이름
+              </label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">
-                Gemini API 키 관리
-              </h2>
-              <p className="text-sm text-gray-500">
-                AI 첨삭 기능에 사용되는 API 키
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                이메일
+              </label>
+              <input
+                type="email"
+                value={editEmail}
+                disabled
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                이메일은 Supabase Auth에서 관리됩니다
               </p>
             </div>
           </div>
 
-          <a
-            href="https://aistudio.google.com/app/apikey"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 mb-4"
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+              <Shield className="w-3 h-3" />
+              플랫폼 관리자
+            </span>
+          </div>
+
+          <button
+            onClick={handleSaveProfile}
+            disabled={saving}
+            className="flex items-center gap-2 bg-red-500 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-600 disabled:opacity-50"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
-            Google AI Studio에서 API 키 발급
-          </a>
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            프로필 저장
+          </button>
 
-          <div className="space-y-3">
-            <div className="relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          {/* Password change */}
+          <div className="border-t pt-4 mt-4">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">
+              비밀번호 변경
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="새 비밀번호"
+                  className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                />
+                <button
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+              </div>
               <input
-                type={showApiKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => {
-                  setApiKey(e.target.value);
-                  setApiKeyValid(null);
-                }}
-                placeholder="AIza..."
-                className="w-full pl-11 pr-20 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-colors text-gray-900 placeholder:text-gray-400"
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="비밀번호 확인"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
               />
-              <button
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
-              >
-                {showApiKey ? (
-                  <EyeOff className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <Eye className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
             </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={validateApiKey}
-                disabled={isValidating || !apiKey.trim()}
-                className="flex-1 py-2.5 border border-purple-200 text-purple-700 rounded-xl font-medium hover:bg-purple-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isValidating ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : apiKeyValid ? (
-                  <>
-                    <Check className="w-4 h-4 text-green-500" />
-                    유효함
-                  </>
-                ) : (
-                  "키 검증"
-                )}
-              </button>
-              <button
-                onClick={saveApiKey}
-                disabled={saving || !apiKeyValid}
-                className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  "저장"
-                )}
-              </button>
-            </div>
+            <button
+              onClick={handleChangePassword}
+              disabled={changingPassword || !newPassword || !confirmPassword}
+              className="mt-3 flex items-center gap-2 bg-gray-800 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-900 disabled:opacity-50"
+            >
+              {changingPassword && (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              )}
+              비밀번호 변경
+            </button>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* 5. 시스템 정보 */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+            <Info className="w-5 h-5 text-gray-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">시스템 정보</h2>
+            <p className="text-sm text-gray-500">애플리케이션 환경 정보</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500">버전</p>
+            <p className="font-medium text-gray-900">v1.8</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500">환경</p>
+            <p className="font-medium text-gray-900">
+              {process.env.NODE_ENV === "production"
+                ? "Production"
+                : "Development"}
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500">Next.js</p>
+            <p className="font-medium text-gray-900">14.2.35</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500">Supabase 프로젝트</p>
+            <p className="font-medium text-gray-900 text-xs">jjtvpexmbxvcsplnyczp</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

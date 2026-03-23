@@ -75,12 +75,21 @@ export async function updateSession(request: NextRequest) {
   // === 로그인된 유저: profiles 1회 조회 ===
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, is_onboarded")
+    .select("role, is_onboarded, is_active")
     .eq("id", user.id)
     .single();
 
   const role = profile?.role || "student";
   const isOnboarded = profile?.is_onboarded !== false;
+  const isActive = profile?.is_active !== false;
+
+  // 비활성화된 강사 → 로그인 페이지로
+  if (role === "instructor" && !isActive) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("error", "inactive");
+    return NextResponse.redirect(url);
+  }
 
   // 로그인 상태에서 로그인/회원가입 접근 → 역할별 대시보드로 리다이렉트
   if (isAuthPage) {
@@ -88,7 +97,7 @@ export async function updateSession(request: NextRequest) {
     if (role === "instructor" && !isOnboarded) {
       url.pathname = "/onboarding";
     } else if (role === "instructor") {
-      url.pathname = "/admin/dashboard";
+      url.pathname = "/instructor/dashboard";
     } else if (role === "super_admin") {
       url.pathname = "/admin/dashboard";
     } else {
@@ -107,27 +116,27 @@ export async function updateSession(request: NextRequest) {
   // 온보딩 페이지: 온보딩 완료된 유저는 접근 불가
   if (isOnboardingPage && (isOnboarded || role === "student")) {
     const url = request.nextUrl.clone();
-    url.pathname = role === "student" ? "/dashboard" : "/admin/dashboard";
+    url.pathname = role === "student" ? "/dashboard" : role === "instructor" ? "/instructor/dashboard" : "/admin/dashboard";
     return NextResponse.redirect(url);
   }
 
-  // === /admin/* 라우트 보호 ===
+  // === /admin/* 라우트 보호 (super_admin 전용) ===
   if (pathname.startsWith("/admin")) {
-    if (role === "student") {
+    if (role === "super_admin") {
+      return supabaseResponse;
+    }
+    if (role === "instructor") {
       const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
+      url.pathname = "/instructor/dashboard";
       return NextResponse.redirect(url);
     }
-    if (role !== "super_admin" && role !== "instructor") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
-    }
-    // instructor, super_admin → 통과
-    return supabaseResponse;
+    // student or unknown
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
   }
 
-  // === /instructor/* 라우트 보호 (추후 사용) ===
+  // === /instructor/* 라우트 보호 ===
   if (pathname.startsWith("/instructor")) {
     if (role === "student") {
       const url = request.nextUrl.clone();

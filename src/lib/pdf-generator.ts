@@ -473,7 +473,7 @@ export function generateBatchReviewPDF(
   });
 
   // --- Each document detail ---
-  items.forEach((item, idx) => {
+  items.forEach((item) => {
     doc.addPage();
     addHeader(
       doc,

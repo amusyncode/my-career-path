@@ -9,6 +9,7 @@ interface ResultActionBarProps {
   onEmail?: () => Promise<void>;
   emailDisabled?: boolean;
   emailTooltip?: string;
+  hideEmail?: boolean;
   size?: "sm" | "md";
   className?: string;
 }
@@ -19,6 +20,7 @@ export default function ResultActionBar({
   onEmail,
   emailDisabled = false,
   emailTooltip,
+  hideEmail = false,
   size = "sm",
   className = "",
 }: ResultActionBarProps) {
@@ -60,7 +62,7 @@ export default function ResultActionBar({
         <FileDown className={iconSize} />
         PDF
       </button>
-      {onEmail && (
+      {onEmail && !hideEmail && (
         <button
           onClick={handleEmail}
           disabled={emailDisabled || isSendingEmail}

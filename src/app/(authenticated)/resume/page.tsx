@@ -10,6 +10,9 @@ import type {
   CoverLetter,
   ResumeDataRow,
   Experience,
+  UploadedResume,
+  UploadedCoverLetter,
+  AIReviewResult,
 } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -36,9 +39,14 @@ import {
   MessageSquare,
   ExternalLink,
   Loader2,
+  Sparkles,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import ResultActionBar from "@/components/instructor/ResultActionBar";
 import {
   DragDropContext,
   Droppable,
@@ -138,7 +146,7 @@ export default function ResumePage() {
   /* ─── 공통 상태 ─── */
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"resume" | "coverLetter">(
+  const [activeTab, setActiveTab] = useState<"resume" | "coverLetter" | "aiReview">(
     "resume"
   );
 
@@ -181,6 +189,12 @@ export default function ResumePage() {
   /* ─── 이력서 DB 저장 ─── */
   const [resumeSaving, setResumeSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
+  /* ─── 업로드된 서류 & AI 리뷰 ─── */
+  const [uploadedResumes, setUploadedResumes] = useState<UploadedResume[]>([]);
+  const [uploadedCoverLetters, setUploadedCoverLetters] = useState<UploadedCoverLetter[]>([]);
+  const [aiReviews, setAiReviews] = useState<AIReviewResult[]>([]);
+  const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
 
   /* ─── 프로필 사진 업로드 ─── */
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -228,6 +242,28 @@ export default function ResumePage() {
       setProjects(projRes.data || []);
       setSkills(skillRes.data || []);
       setCoverLetters(clRes.data || []);
+
+      // 업로드된 서류 & AI 리뷰 로드
+      const [upResumeRes, upCLRes, reviewRes] = await Promise.all([
+        supabase
+          .from("uploaded_resumes")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("uploaded_cover_letters")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("ai_review_results")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+      ]);
+      setUploadedResumes(upResumeRes.data || []);
+      setUploadedCoverLetters(upCLRes.data || []);
+      setAiReviews(reviewRes.data || []);
 
       // 1순위: DB에서 이력서 복원
       const { data: dbResume } = await supabase
@@ -515,6 +551,63 @@ export default function ResumePage() {
     }
   };
 
+  /* ─── AI 리뷰 복사/PDF ─── */
+  const copyReviewToClipboard = async (review: AIReviewResult): Promise<boolean> => {
+    try {
+      const lines = [];
+      lines.push(`AI 리뷰 결과 (${review.document_type === "resume" ? "이력서" : "자기소개서"})`);
+      lines.push(`점수: ${review.score ?? "-"}/100`);
+      if (review.feedback) lines.push(`\n피드백: ${review.feedback}`);
+      if (review.revised_content) lines.push(`\n수정된 내용:\n${review.revised_content}`);
+      if (review.improvement_points?.length) {
+        lines.push(`\n개선 사항:`);
+        review.improvement_points.forEach((pt: Record<string, unknown>) => {
+          lines.push(`  - ${pt.category}: ${pt.comment} (${pt.score}점)`);
+        });
+      }
+      await navigator.clipboard.writeText(lines.join("\n"));
+      toast.success("클립보드에 복사되었습니다.");
+      return true;
+    } catch {
+      toast.error("복사에 실패했습니다.");
+      return false;
+    }
+  };
+
+  const downloadReviewPDF = async (review: AIReviewResult) => {
+    try {
+      const jsPDF = (await import("jspdf")).default;
+      const pdf = new jsPDF("p", "mm", "a4");
+      const w = pdf.internal.pageSize.getWidth();
+      let y = 20;
+      pdf.setFontSize(16);
+      pdf.text(`AI 리뷰 결과`, w / 2, y, { align: "center" });
+      y += 12;
+      pdf.setFontSize(10);
+      pdf.text(`유형: ${review.document_type === "resume" ? "이력서" : "자기소개서"}`, 20, y);
+      y += 7;
+      pdf.text(`점수: ${review.score ?? "-"}/100`, 20, y);
+      y += 7;
+      if (review.feedback) {
+        pdf.text(`피드백: ${review.feedback}`, 20, y, { maxWidth: w - 40 });
+        y += 12;
+      }
+      if (review.improvement_points?.length) {
+        pdf.text("개선 사항:", 20, y);
+        y += 7;
+        review.improvement_points.forEach((pt: Record<string, unknown>) => {
+          if (y > 270) { pdf.addPage(); y = 20; }
+          pdf.text(`• ${pt.category}: ${pt.comment} (${pt.score}점)`, 25, y, { maxWidth: w - 50 });
+          y += 7;
+        });
+      }
+      pdf.save(`AI_리뷰_${review.document_type}_${format(parseISO(review.created_at), "yyyyMMdd")}.pdf`);
+      toast.success("PDF 다운로드 완료");
+    } catch {
+      toast.error("PDF 생성 실패");
+    }
+  };
+
   /* ─── PDF 다운로드 ─── */
   const downloadPDF = async () => {
     if (!previewRef.current) return;
@@ -720,6 +813,22 @@ export default function ResumePage() {
           >
             <MessageSquare className="w-4 h-4 inline mr-2" />
             자기소개서
+          </button>
+          <button
+            onClick={() => setActiveTab("aiReview")}
+            className={`px-6 py-3 text-sm font-semibold transition-colors relative ${
+              activeTab === "aiReview"
+                ? "text-blue-600 border-b-2 border-blue-500"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Sparkles className="w-4 h-4 inline mr-2" />
+            AI 리뷰
+            {aiReviews.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded-full text-[10px] font-bold">
+                {aiReviews.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -1904,6 +2013,279 @@ export default function ResumePage() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ====== AI 리뷰 탭 ====== */}
+      {activeTab === "aiReview" && (
+        <div className="space-y-6">
+          {/* 업로드된 서류 목록 */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+            <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Upload className="w-5 h-5 text-blue-500" />
+              업로드된 서류
+            </h2>
+            {uploadedResumes.length === 0 && uploadedCoverLetters.length === 0 ? (
+              <div className="text-center py-8">
+                <Upload className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500">
+                  강사가 업로드한 서류가 없습니다.
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  강사가 이력서나 자기소개서를 업로드하면 여기에 표시됩니다.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {uploadedResumes.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-5 h-5 text-blue-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">
+                          {doc.title || doc.file_name}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          이력서 · {format(parseISO(doc.created_at), "yyyy.MM.dd")}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {doc.status === "reviewed" ? (
+                        <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                          <CheckCircle2 className="w-3 h-3" /> 리뷰 완료
+                        </span>
+                      ) : doc.status === "reviewing" ? (
+                        <span className="flex items-center gap-1 text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full">
+                          <Clock className="w-3 h-3" /> 리뷰 중
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                          <AlertCircle className="w-3 h-3" /> 대기
+                        </span>
+                      )}
+                      {doc.file_url && (
+                        <a
+                          href={doc.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-500 hover:underline"
+                        >
+                          원본보기
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {uploadedCoverLetters.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className="w-5 h-5 text-purple-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">
+                          {doc.title || doc.file_name || "자기소개서"}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          자기소개서 · {format(parseISO(doc.created_at), "yyyy.MM.dd")}
+                          {doc.target_company && ` · ${doc.target_company}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {doc.status === "reviewed" ? (
+                        <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                          <CheckCircle2 className="w-3 h-3" /> 리뷰 완료
+                        </span>
+                      ) : doc.status === "reviewing" ? (
+                        <span className="flex items-center gap-1 text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full">
+                          <Clock className="w-3 h-3" /> 리뷰 중
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                          <AlertCircle className="w-3 h-3" /> 대기
+                        </span>
+                      )}
+                      {doc.file_url && (
+                        <a
+                          href={doc.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-500 hover:underline"
+                        >
+                          원본보기
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* AI 리뷰 결과 목록 */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+            <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-purple-500" />
+              AI 리뷰 결과
+            </h2>
+            {aiReviews.length === 0 ? (
+              <div className="text-center py-8">
+                <Sparkles className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500">
+                  AI 리뷰 결과가 없습니다.
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  강사가 서류를 AI로 리뷰하면 결과가 여기에 표시됩니다.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {aiReviews.map((review) => (
+                  <div
+                    key={review.id}
+                    className="border border-gray-100 rounded-xl overflow-hidden"
+                  >
+                    {/* 리뷰 헤더 */}
+                    <button
+                      onClick={() =>
+                        setExpandedReviewId(
+                          expandedReviewId === review.id ? null : review.id
+                        )
+                      }
+                      className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        {review.document_type === "resume" ? (
+                          <FileText className="w-5 h-5 text-blue-500" />
+                        ) : (
+                          <MessageSquare className="w-5 h-5 text-purple-500" />
+                        )}
+                        <div className="text-left">
+                          <p className="text-sm font-medium text-gray-800">
+                            {review.document_type === "resume"
+                              ? "이력서 리뷰"
+                              : "자기소개서 리뷰"}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {format(
+                              parseISO(review.created_at),
+                              "yyyy.MM.dd HH:mm",
+                              { locale: ko }
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {review.score !== null && review.score !== undefined && (
+                          <div
+                            className={`text-sm font-bold px-2.5 py-1 rounded-full ${
+                              review.score >= 80
+                                ? "bg-green-50 text-green-600"
+                                : review.score >= 60
+                                ? "bg-yellow-50 text-yellow-600"
+                                : "bg-red-50 text-red-600"
+                            }`}
+                          >
+                            {review.score}점
+                          </div>
+                        )}
+                        {expandedReviewId === review.id ? (
+                          <ChevronDown className="w-5 h-5 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-gray-400" />
+                        )}
+                      </div>
+                    </button>
+
+                    {/* 리뷰 상세 */}
+                    {expandedReviewId === review.id && (
+                      <div className="px-5 pb-5 border-t border-gray-50 space-y-4">
+                        {/* 액션 바 */}
+                        <div className="flex justify-end pt-3">
+                          <ResultActionBar
+                            onCopy={() => copyReviewToClipboard(review)}
+                            onPDF={() => downloadReviewPDF(review)}
+                            hideEmail
+                            size="sm"
+                          />
+                        </div>
+
+                        {/* 피드백 */}
+                        {review.feedback && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 mb-1.5">
+                              종합 피드백
+                            </h4>
+                            <p className="text-sm text-gray-700 bg-blue-50 rounded-lg p-3">
+                              {review.feedback}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* 개선 사항 */}
+                        {review.improvement_points &&
+                          review.improvement_points.length > 0 && (
+                            <div>
+                              <h4 className="text-xs font-semibold text-gray-500 mb-1.5">
+                                개선 사항
+                              </h4>
+                              <div className="space-y-2">
+                                {review.improvement_points.map(
+                                  (pt: Record<string, unknown>, idx: number) => (
+                                    <div
+                                      key={idx}
+                                      className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
+                                    >
+                                      <span
+                                        className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                                          (pt.score as number) >= 80
+                                            ? "bg-green-100 text-green-600"
+                                            : (pt.score as number) >= 60
+                                            ? "bg-yellow-100 text-yellow-600"
+                                            : "bg-red-100 text-red-600"
+                                        }`}
+                                      >
+                                        {pt.score as number}
+                                      </span>
+                                      <div>
+                                        <p className="text-sm font-medium text-gray-800">
+                                          {pt.category as string}
+                                        </p>
+                                        <p className="text-xs text-gray-500 mt-0.5">
+                                          {pt.comment as string}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                        {/* 수정된 내용 */}
+                        {review.revised_content && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 mb-1.5">
+                              AI 수정 내용
+                            </h4>
+                            <div className="text-sm text-gray-700 bg-green-50 rounded-lg p-3 max-h-60 overflow-y-auto whitespace-pre-wrap">
+                              {review.revised_content}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

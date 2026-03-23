@@ -7,7 +7,6 @@ import {
   FileText,
   FileEdit,
   X,
-  Check,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
@@ -63,6 +62,7 @@ export default function InstructorUploadPage() {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [gemMode, setGemMode] = useState<GemMode>("auto");
   const [manualGemId, setManualGemId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [manualGemName, setManualGemName] = useState("");
   const [autoReview, setAutoReview] = useState(true);
   const [isDragging, setIsDragging] = useState(false);

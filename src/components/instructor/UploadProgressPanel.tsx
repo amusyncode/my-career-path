@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, X, Clock, Loader2 } from "lucide-react";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { formatFileSize } from "@/lib/file-matching";
 
 export type FileStatus =
@@ -38,6 +39,7 @@ export default function UploadProgressPanel({
   files,
   isProcessing,
   onRetry,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onComplete,
   onDownloadPDF,
   onCopyAll,

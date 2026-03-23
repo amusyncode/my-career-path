@@ -82,6 +82,69 @@ export function copySuggestionToClipboard(data: {
   return copyToClipboard(text, "AI 제안이 클립보드에 복사되었습니다");
 }
 
+// Copy batch review results as formatted text
+export interface BatchReviewClipboardItem {
+  studentName: string;
+  school: string;
+  department: string;
+  educationLevel: "high_school" | "university";
+  documentType: "resume" | "cover_letter";
+  gemName: string;
+  score: number;
+  feedback: string;
+  improvementPoints: { category?: string; score?: number; comment?: string; suggestion?: string }[];
+  revisedContent: string;
+}
+
+export function copyBatchReviewToClipboard(
+  results: BatchReviewClipboardItem[],
+  instructorName: string
+) {
+  const now = new Date().toLocaleDateString("ko-KR");
+  const avgScore =
+    results.length > 0
+      ? Math.round(results.reduce((s, r) => s + r.score, 0) / results.length)
+      : 0;
+  const eduLabel = (l: string) => (l === "high_school" ? "특성화고" : "대학교");
+  const docLabel = (d: string) => (d === "resume" ? "이력서" : "자기소개서");
+
+  let text = `═══════════════════════════════════\n`;
+  text += `📋 AI 일괄 첨삭 결과\n`;
+  text += `═══════════════════════════════════\n`;
+  text += `담당 강사: ${instructorName}\n`;
+  text += `생성일: ${now}\n`;
+  text += `총 ${results.length}건 · 평균 ${avgScore}점\n`;
+
+  results.forEach((r, i) => {
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `[${i + 1}] ${r.studentName} (${eduLabel(r.educationLevel)}) - ${docLabel(r.documentType)}\n`;
+    text += `🤖 Gem: ${r.gemName || "-"}\n`;
+    text += `🏆 점수: ${r.score}점\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+    if (r.feedback) {
+      text += `\n📝 총평\n${r.feedback}\n`;
+    }
+
+    if (r.improvementPoints && r.improvementPoints.length > 0) {
+      text += `\n✅ 주요 개선점\n`;
+      r.improvementPoints.forEach((p, j) => {
+        const cat = p.category ? `[${p.category}] ` : "";
+        const comment = p.suggestion || p.comment || "";
+        text += `${j + 1}. ${cat}${comment}\n`;
+      });
+    }
+
+    if (r.revisedContent) {
+      text += `\n📄 수정본\n${r.revisedContent}\n`;
+    }
+  });
+
+  text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+  return copyToClipboard(text, "일괄 첨삭 결과가 클립보드에 복사되었습니다");
+}
+
 // Base copy utility
 async function copyToClipboard(text: string, successMsg: string): Promise<boolean> {
   try {

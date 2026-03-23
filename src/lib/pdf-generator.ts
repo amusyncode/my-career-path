@@ -411,6 +411,137 @@ export function generateStudentReportPDF(data: {
   return doc;
 }
 
+// --- Batch Review PDF ---
+
+export interface BatchReviewItem {
+  studentName: string;
+  school: string;
+  department: string;
+  educationLevel: "high_school" | "university";
+  documentType: "resume" | "cover_letter";
+  gemName: string;
+  score: number;
+  feedback: string;
+  improvementPoints: { category?: string; score?: number; comment?: string }[];
+  revisedContent: string;
+}
+
+export function generateBatchReviewPDF(
+  items: BatchReviewItem[],
+  instructorName: string
+) {
+  const doc = new jsPDF();
+  const now = new Date().toLocaleDateString("ko-KR");
+  const avgScore =
+    items.length > 0
+      ? Math.round(items.reduce((s, i) => s + i.score, 0) / items.length)
+      : 0;
+
+  // --- Cover page ---
+  addHeader(doc, "MyCareerPath AI 일괄 첨삭 결과", `담당 강사: ${instructorName}`);
+
+  let y = 50;
+  doc.setFontSize(11);
+  doc.setTextColor(107, 114, 128);
+  doc.text(`생성일: ${now}`, 20, y);
+  y += 8;
+  doc.text(`총 ${items.length}건 / 평균 ${avgScore}점`, 20, y);
+  y += 14;
+
+  // Summary table
+  const eduLabel = (l: string) => (l === "high_school" ? "특성화고" : "대학교");
+  const docLabel = (d: string) => (d === "resume" ? "이력서" : "자소서");
+
+  autoTable(doc, {
+    startY: y,
+    head: [["#", "학생", "학교급", "문서유형", "Gem", "점수"]],
+    body: items.map((item, i) => [
+      `${i + 1}`,
+      item.studentName,
+      eduLabel(item.educationLevel),
+      docLabel(item.documentType),
+      item.gemName || "-",
+      `${item.score}`,
+    ]),
+    styles: { fontSize: 9, cellPadding: 4 },
+    headStyles: { fillColor: [124, 58, 237], textColor: 255 },
+    columnStyles: {
+      0: { cellWidth: 12, halign: "center" },
+      5: { cellWidth: 18, halign: "center" },
+    },
+    margin: { left: 20, right: 20 },
+  });
+
+  // --- Each document detail ---
+  items.forEach((item, idx) => {
+    doc.addPage();
+    addHeader(
+      doc,
+      `${item.studentName} - ${docLabel(item.documentType)}`,
+      `Gem: ${item.gemName || "-"} / 점수: ${item.score}점`
+    );
+
+    let dy = 45;
+
+    // Feedback
+    if (item.feedback) {
+      doc.setFontSize(12);
+      doc.setTextColor(55, 65, 81);
+      doc.text("총평", 20, dy);
+      dy += 8;
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128);
+      const lines = doc.splitTextToSize(item.feedback, 170);
+      doc.text(lines, 20, dy);
+      dy += lines.length * 5 + 10;
+    }
+
+    // Improvement points
+    if (item.improvementPoints && item.improvementPoints.length > 0) {
+      if (dy > 250) { doc.addPage(); dy = 20; }
+      doc.setFontSize(12);
+      doc.setTextColor(55, 65, 81);
+      doc.text("개선점", 20, dy);
+      dy += 6;
+      autoTable(doc, {
+        startY: dy,
+        head: [["항목", "점수", "코멘트"]],
+        body: item.improvementPoints.map((p) => [
+          p.category || "-",
+          p.score != null ? `${p.score}` : "-",
+          p.comment || "-",
+        ]),
+        styles: { fontSize: 9, cellPadding: 4 },
+        headStyles: { fillColor: [124, 58, 237], textColor: 255 },
+        margin: { left: 20, right: 20 },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      dy = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Revised content
+    if (item.revisedContent) {
+      if (dy > 240) { doc.addPage(); dy = 20; }
+      doc.setFontSize(12);
+      doc.setTextColor(55, 65, 81);
+      doc.text("수정본", 20, dy);
+      dy += 8;
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      const lines = doc.splitTextToSize(item.revisedContent, 170);
+      // 페이지 분할 처리
+      for (const line of lines) {
+        if (dy > 280) { doc.addPage(); dy = 20; }
+        doc.text(line, 20, dy);
+        dy += 5;
+      }
+    }
+  });
+
+  addFooter(doc, instructorName);
+  return doc;
+}
+
 // Download helper
 export function downloadPDF(doc: jsPDF, filename: string) {
   doc.save(`${filename}.pdf`);

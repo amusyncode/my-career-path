@@ -439,3 +439,20 @@ export interface StudentListItem {
   last_active_date: string | null;
   current_streak: number;
 }
+
+// --- 이메일 데이터 ---
+
+export interface InviteEmailData {
+  studentName: string;
+  instructorName: string;
+  inviteUrl: string;
+  schoolName?: string;
+}
+
+export interface InstructorWelcomeEmailData {
+  instructorName: string;
+  email: string;
+  tempPassword: string;
+  inviteCode: string;
+  loginUrl: string;
+}

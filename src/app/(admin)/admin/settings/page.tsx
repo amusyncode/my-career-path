@@ -23,8 +23,24 @@ import {
   Mail,
   FileEdit,
   Save,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import type { Profile } from "@/lib/types";
+
+interface EmailLog {
+  id: string;
+  instructor_id: string;
+  student_id: string | null;
+  recipient_email: string;
+  subject: string;
+  content_type: string;
+  status: string;
+  sent_at: string;
+  error_message: string | null;
+  instructor_name?: string;
+  student_name?: string;
+}
 
 interface PlatformStats {
   totalInstructors: number;
@@ -63,6 +79,12 @@ export default function SettingsPage() {
     totalGems: 0,
   });
   const [loadingStats, setLoadingStats] = useState(true);
+
+  // Email history
+  const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
+  const [emailPage, setEmailPage] = useState(1);
+  const [emailTotal, setEmailTotal] = useState(0);
+  const [emailLoading, setEmailLoading] = useState(false);
 
   // Profile edit
   const [editName, setEditName] = useState("");
@@ -151,10 +173,46 @@ export default function SettingsPage() {
     setLoadingStats(false);
   }, [supabase]);
 
+  const fetchEmailLogs = useCallback(async () => {
+    setEmailLoading(true);
+    try {
+      const from = (emailPage - 1) * 10;
+      const { data, count } = await supabase
+        .from("email_logs")
+        .select("*", { count: "exact" })
+        .order("sent_at", { ascending: false })
+        .range(from, from + 9);
+
+      if (data) {
+        // Get instructor + student names
+        const instrIds = [...new Set(data.map(l => l.instructor_id))];
+        const studIds = [...new Set(data.filter(l => l.student_id).map(l => l.student_id!))];
+        const allIds = [...new Set([...instrIds, ...studIds])];
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, name")
+          .in("id", allIds);
+        const nameMap: Record<string, string> = {};
+        profiles?.forEach(p => { nameMap[p.id] = p.name; });
+
+        setEmailLogs(data.map(l => ({
+          ...l,
+          instructor_name: nameMap[l.instructor_id] || "-",
+          student_name: l.student_id ? nameMap[l.student_id] || "-" : "-",
+        })));
+      }
+      setEmailTotal(count || 0);
+    } catch (err) {
+      console.error("이메일 로그 조회 실패:", err);
+    }
+    setEmailLoading(false);
+  }, [supabase, emailPage]);
+
   useEffect(() => {
     fetchProfile();
     fetchStats();
-  }, [fetchProfile, fetchStats]);
+    fetchEmailLogs();
+  }, [fetchProfile, fetchStats, fetchEmailLogs]);
 
   const testConnection = async () => {
     setConnectionStatus("testing");
@@ -373,7 +431,96 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* 4. 관리자 프로필 */}
+      {/* 4. 이메일 발송 내역 */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+            <Mail className="w-5 h-5 text-green-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">이메일 발송 내역</h2>
+            <p className="text-sm text-gray-500">플랫폼 전체 이메일 발송 기록 (최근순)</p>
+          </div>
+        </div>
+
+        {emailLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          </div>
+        ) : emailLogs.length === 0 ? (
+          <p className="text-center text-gray-400 py-8">발송 내역이 없습니다</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">상태</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">유형</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">발신자</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">수신자</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">제목</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">발송일</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emailLogs.map((log) => (
+                    <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-3 py-2">
+                        <span className={`text-xs ${log.status === "sent" ? "text-green-600" : "text-red-600"}`}>
+                          {log.status === "sent" ? "✅" : "❌"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          log.content_type === "ai_review" ? "bg-blue-100 text-blue-700" :
+                          log.content_type === "counseling" ? "bg-green-100 text-green-700" :
+                          log.content_type === "invite" ? "bg-purple-100 text-purple-700" :
+                          log.content_type === "instructor_welcome" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-700"
+                        }`}>
+                          {log.content_type === "ai_review" ? "AI 분석" :
+                           log.content_type === "counseling" ? "상담" :
+                           log.content_type === "invite" ? "초대" :
+                           log.content_type === "instructor_welcome" ? "강사 환영" :
+                           "커스텀"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-700">{log.instructor_name}</td>
+                      <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate">{log.recipient_email}</td>
+                      <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate">{log.subject}</td>
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap text-xs">
+                        {new Date(log.sent_at).toLocaleDateString("ko-KR")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {Math.ceil(emailTotal / 10) > 1 && (
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                <button
+                  disabled={emailPage <= 1}
+                  onClick={() => setEmailPage(p => p - 1)}
+                  className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                >
+                  <ChevronLeft className="w-4 h-4" /> 이전
+                </button>
+                <span className="text-xs text-gray-500">{emailPage} / {Math.ceil(emailTotal / 10)}</span>
+                <button
+                  disabled={emailPage >= Math.ceil(emailTotal / 10)}
+                  onClick={() => setEmailPage(p => p + 1)}
+                  className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-40"
+                >
+                  다음 <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 5. 관리자 프로필 */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
@@ -482,7 +629,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* 5. 시스템 정보 */}
+      {/* 6. 시스템 정보 */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -497,7 +644,7 @@ export default function SettingsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-500">버전</p>
-            <p className="font-medium text-gray-900">v1.8</p>
+            <p className="font-medium text-gray-900">v2.0</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-500">환경</p>

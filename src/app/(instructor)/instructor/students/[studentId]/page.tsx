@@ -21,7 +21,10 @@ import {
   CalendarDays,
   FileText,
   BarChart3,
-  Link2,
+  Mail,
+  Link as LinkIcon,
+  Loader2,
+  Check,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -79,6 +82,9 @@ export default function InstructorStudentDetailPage() {
     "resume" | "cover_letter" | null
   >(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [instructorInviteCode, setInstructorInviteCode] = useState<string | null>(null);
+  const [copiedInviteLink, setCopiedInviteLink] = useState(false);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -90,6 +96,16 @@ export default function InstructorStudentDetailPage() {
       if (!user) {
         router.push("/login");
         return;
+      }
+
+      // Fetch instructor's invite_code
+      const { data: instrProfile } = await supabase
+        .from("profiles")
+        .select("invite_code")
+        .eq("id", user.id)
+        .single();
+      if (instrProfile?.invite_code) {
+        setInstructorInviteCode(instrProfile.invite_code);
       }
 
       // Fetch profile with instructor_id check
@@ -302,11 +318,52 @@ export default function InstructorStudentDetailPage() {
               <Edit3 className="w-4 h-4" />
               학생 정보 수정
             </button>
-            {!hasAuth && profile.student_email && (
-              <button className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1">
-                <Link2 className="w-3.5 h-3.5" />
-                초대 링크 보내기
-              </button>
+            {!hasAuth && (
+              <div className="flex gap-2 items-center">
+                {profile.student_email && (
+                  <button
+                    disabled={isSendingInvite}
+                    onClick={async () => {
+                      setIsSendingInvite(true);
+                      try {
+                        const res = await fetch("/api/email/send-invite", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ studentId }),
+                        });
+                        if (res.ok) {
+                          toast.success("초대 이메일을 발송했습니다");
+                        } else {
+                          const data = await res.json();
+                          toast.error(data.error || "발송 실패");
+                        }
+                      } catch {
+                        toast.error("이메일 발송 중 오류");
+                      }
+                      setIsSendingInvite(false);
+                    }}
+                    className="bg-purple-500 text-white rounded-lg px-3 py-2 text-sm flex items-center gap-1.5 hover:bg-purple-600 transition-colors disabled:opacity-50"
+                  >
+                    {isSendingInvite ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                    초대 메일 발송
+                  </button>
+                )}
+                {instructorInviteCode && (
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/signup?invite=${instructorInviteCode}`;
+                      navigator.clipboard.writeText(url);
+                      setCopiedInviteLink(true);
+                      toast.success("초대 링크가 복사되었습니다");
+                      setTimeout(() => setCopiedInviteLink(false), 2000);
+                    }}
+                    className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm flex items-center gap-1.5 hover:bg-gray-50 transition-colors text-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300"
+                  >
+                    {copiedInviteLink ? <Check className="w-4 h-4 text-green-500" /> : <LinkIcon className="w-4 h-4" />}
+                    {copiedInviteLink ? "복사됨" : "초대 링크 복사"}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>

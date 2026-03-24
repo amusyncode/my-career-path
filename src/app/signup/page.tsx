@@ -205,38 +205,43 @@ function SignupForm() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      try {
-        const profileUpdate: Record<string, unknown> = {
-          name: form.name,
-          phone: form.phone || null,
-        };
-
-        if (role === "instructor") {
-          profileUpdate.invite_code = generateInviteCodeSync();
-          profileUpdate.is_onboarded = false;
-          profileUpdate.school = form.school || null;
+      if (role === "student") {
+        try {
+          await supabase.rpc('merge_student_profile', {
+            p_new_user_id: user.id,
+            p_instructor_id: inviteStatus?.instructorId || null,
+            p_name: form.name,
+            p_email: form.email,
+            p_school: form.school || null,
+            p_department: form.department || null,
+            p_grade: form.grade || null,
+            p_education_level: form.educationLevel || null,
+          });
+        } catch (err) {
+          console.error("프로필 병합 실패:", err);
         }
+      } else {
+        // Instructor branch - keep existing update logic
+        try {
+          const profileUpdate: Record<string, unknown> = {
+            name: form.name,
+            phone: form.phone || null,
+            invite_code: generateInviteCodeSync(),
+            is_onboarded: false,
+            school: form.school || null,
+          };
 
-        if (role === "student") {
-          profileUpdate.school = form.school || null;
-          profileUpdate.department = form.department || null;
-          profileUpdate.grade = form.grade ? parseInt(form.grade) : null;
-          profileUpdate.instructor_id = inviteStatus?.instructorId || null;
-          profileUpdate.education_level = form.educationLevel || null;
-          profileUpdate.target_field = form.targetField || null;
-          profileUpdate.is_onboarded = false;
+          const { error: updateError } = await supabase
+            .from("profiles")
+            .update(profileUpdate)
+            .eq("id", user.id);
+
+          if (updateError) {
+            console.error("프로필 업데이트 실패:", updateError);
+          }
+        } catch (err) {
+          console.error("프로필 업데이트 예외:", err);
         }
-
-        const { error: updateError } = await supabase
-          .from("profiles")
-          .update(profileUpdate)
-          .eq("id", user.id);
-
-        if (updateError) {
-          console.error("프로필 업데이트 실패:", updateError);
-        }
-      } catch (err) {
-        console.error("프로필 업데이트 예외:", err);
       }
     }
 

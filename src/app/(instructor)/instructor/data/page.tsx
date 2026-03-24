@@ -3,19 +3,21 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Table2, Download, BarChart3, Sparkles, Loader2 } from "lucide-react";
+import { Table2, Download, BarChart3, Sparkles, Loader2, Mail } from "lucide-react";
 import DataBrowseTab from "@/components/instructor/tabs/DataBrowseTab";
 import DataExportTab from "@/components/instructor/tabs/DataExportTab";
 import DataStatsTab from "@/components/instructor/tabs/DataStatsTab";
 import AIUsageTab from "@/components/instructor/tabs/AIUsageTab";
+import EmailHistoryTab from "@/components/instructor/tabs/EmailHistoryTab";
 
-type TabKey = "browse" | "export" | "stats" | "usage";
+type TabKey = "browse" | "export" | "stats" | "usage" | "email";
 
 const TABS: { key: TabKey; label: string; icon: typeof Table2 }[] = [
   { key: "browse", label: "데이터 조회", icon: Table2 },
   { key: "export", label: "내보내기", icon: Download },
   { key: "stats", label: "통계 요약", icon: BarChart3 },
   { key: "usage", label: "AI 사용 이력", icon: Sparkles },
+  { key: "email", label: "이메일 발송 내역", icon: Mail },
 ];
 
 export default function InstructorDataPage() {
@@ -90,6 +92,7 @@ export default function InstructorDataPage() {
       {activeTab === "export" && <DataExportTab instructorId={instructorId} instructorName={instructorName} />}
       {activeTab === "stats" && <DataStatsTab instructorId={instructorId} />}
       {activeTab === "usage" && <AIUsageTab instructorId={instructorId} />}
+      {activeTab === "email" && <EmailHistoryTab instructorId={instructorId} />}
     </div>
   );
 }

@@ -54,6 +54,7 @@ export default function CreateInstructorModal({
   const [emailChecking, setEmailChecking] = useState(false);
   const [result, setResult] = useState<CreatedResult | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -109,9 +110,32 @@ export default function CreateInstructorModal({
       setResult({
         email,
         password,
-        invite_code: data.invite_code || "",
+        invite_code: data.invite_code || data.instructor?.invite_code || "",
       });
       toast.success("강사 계정이 생성되었습니다.");
+
+      // Send welcome email if checkbox is checked
+      if (sendWelcomeEmail) {
+        try {
+          const emailRes = await fetch("/api/email/send-instructor-welcome", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              instructorId: data.instructor?.id,
+              email,
+              tempPassword: password,
+              inviteCode: data.invite_code || data.instructor?.invite_code || "",
+            }),
+          });
+          if (emailRes.ok) {
+            toast.success("계정 정보가 이메일로 발송되었습니다");
+          } else {
+            toast("계정은 생성되었지만 이메일 발송에 실패했습니다", { icon: "⚠️" });
+          }
+        } catch {
+          toast("계정은 생성되었지만 이메일 발송에 실패했습니다", { icon: "⚠️" });
+        }
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "강사 생성에 실패했습니다.";
@@ -272,6 +296,19 @@ export default function CreateInstructorModal({
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
               />
             </div>
+
+            {/* Send welcome email checkbox */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendWelcomeEmail}
+                onChange={(e) => setSendWelcomeEmail(e.target.checked)}
+                className="w-4 h-4 text-red-500 border-gray-300 rounded focus:ring-red-500"
+              />
+              <span className="text-sm text-gray-700">
+                계정 정보를 이메일로 발송
+              </span>
+            </label>
 
             {/* Submit */}
             <button
